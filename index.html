@@ -101,18 +101,31 @@ details.more[open] > summary{margin-bottom:12px}
 .err{color:var(--nogo);font-weight:600;margin:0}
 
 /* Progress */
-.steps{display:flex;flex-wrap:wrap;gap:6px 14px;margin:14px 0 0;padding:0;list-style:none;font:500 .85rem var(--font-body);color:var(--muted)}
-.steps li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--cell-off);vertical-align:1px}
-.steps li.run::before{background:var(--accent);animation:pulse 1s infinite alternate}
-.steps li.ok::before{background:var(--cell-go)}
-.steps li.warn::before{background:var(--cell-caution)}
-.steps li.fail::before{background:var(--cell-nogo)}
-.pending{margin:12px 0 0;padding:10px 12px;border:1px dashed var(--accent);border-radius:8px;background:var(--accent-soft);font-size:.92rem;line-height:1.4}
-.pending b{font-weight:600}
-.pending .pf{color:var(--muted)}
-.pending .pf.ready{color:var(--go);font-weight:600}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.src{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
+.src > summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;font:500 .9rem var(--font-body);color:var(--muted)}
+.src > summary::-webkit-details-marker{display:none}
+.src > summary::after{content:"";flex:none;margin-left:auto;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform .2s}
+.src[open] > summary::after{transform:translateY(2px) rotate(-135deg)}
+.src-sum{min-width:0}
+.src-segs{display:flex;gap:3px;flex:none}
+.src-segs i{width:12px;height:6px;border-radius:2px;background:var(--cell-off)}
+.src-segs i.run{background:var(--accent)}.src-segs i.ok{background:var(--cell-go)}.src-segs i.warn{background:var(--cell-caution)}.src-segs i.fail{background:var(--cell-nogo)}
+.src-list{list-style:none;margin:12px 0 2px;padding:0;display:grid;gap:11px}
+.src-row{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;row-gap:5px;align-items:baseline}
+.src-row .nm{font:600 .76rem/1.2 var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.src-row .nt{font-size:.84rem;line-height:1.3;color:var(--muted);text-align:right;overflow-wrap:anywhere}
+.src-row.idle .nm{color:var(--muted)}
+.src-row.fail .nt{color:var(--nogo)}
+.src-row .bar{grid-column:1/-1;position:relative;height:5px;border-radius:3px;background:var(--cell-off);overflow:hidden}
+.src-row .bar i{position:absolute;top:0;bottom:0;left:0;width:0;border-radius:3px;background:var(--accent);transition:width .35s ease}
+.src-row.ind .bar i{width:30%;animation:slide 1.2s ease-in-out infinite}
+.src-row.ok .bar i{width:100%;background:var(--cell-go)}
+.src-row.warn .bar i{width:100%;background:var(--cell-caution)}
+.src-row.fail .bar i{width:100%;background:var(--cell-nogo)}
+@keyframes slide{from{left:-30%}to{left:100%}}
 @keyframes pulse{from{opacity:.35}to{opacity:1}}
-@media (prefers-reduced-motion:reduce){.steps li.run::before{animation:none}}
+@media (prefers-reduced-motion:reduce){.src-row.ind .bar i{animation:none;width:100%;opacity:.35}.src-row .bar i{transition:none}}
 
 /* Conditions band */
 .band{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -181,7 +194,7 @@ section.act > h2 small{font:500 .9rem var(--font-body);text-transform:none;lette
 .flags li.lp::before{background:var(--accent);border-radius:50%}
 .links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem}
 .links a{text-decoration:none;font-weight:600}
-details.hourly summary,details.ruled summary{cursor:pointer;font:600 .9rem var(--font-body);color:var(--muted)}
+details.hourly > summary,details.ruled > summary{cursor:pointer;font:600 .9rem var(--font-body);color:var(--muted)}
 .tbl{overflow-x:auto;margin-top:6px}
 .tbl table{border-collapse:collapse;font:400 .8rem var(--font-mono);width:100%;min-width:420px}
 .tbl th{font:600 .7rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
@@ -190,6 +203,10 @@ details.hourly summary,details.ruled summary{cursor:pointer;font:600 .9rem var(-
 .tbl td .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
 details.ruled{margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
 details.ruled ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:.92rem}
+details.ro > summary{cursor:pointer;line-height:1.4;font:400 .92rem/1.4 var(--font-body);color:var(--ink)}
+details.ro > summary::marker{color:var(--muted)}
+details.ro[open] > summary{margin-bottom:8px}
+.ro-card .card{border-left:4px solid var(--cell-nogo)}
 details.ruled li b{font-weight:600}
 details.ruled li span{color:var(--muted)}
 
@@ -266,7 +283,11 @@ footer p{margin:0;max-width:70ch}
     <button type="submit" class="primary" id="go">Find options</button>
   </form>
 
-  <ul class="steps" id="steps" aria-live="polite"></ul>
+  <details class="src" id="src" hidden>
+    <summary><span class="src-segs" id="srcSegs" aria-hidden="true"></span><span class="src-sum" id="srcSum">Data sources</span></summary>
+    <ul class="src-list" id="srcList"></ul>
+  </details>
+  <p class="sr-only" id="srcLive" aria-live="polite"></p>
   <p class="pending" id="pending" aria-live="polite" hidden></p>
   <div id="out"></div>
 
@@ -936,14 +957,18 @@ const WX_TTL = 15*MIN, DRIVE_TTL = 6*60*MIN;
 const homeWx = (origin, d0, d1) => memo(`home|${pt4(origin)}|${d0}|${d1}`, WX_TTL,
   () => getJSON(wxURL([origin], 'auto', d0, d1, null), {}, 20000).then(E.normWx));
 
-async function weatherFor(items, tz, d0, d1, withElev){
+async function weatherFor(items, tz, d0, d1, withElev, onProg){
   const keyOf = it => `wx|${tz}|${d0}|${d1}|${withElev ? Math.round(it.wxElevFt || 0) : 'dem'}|${pt4(it.wxPt)}`;
   const seen = new Set();
   const missing = items.filter(it => { const k = keyOf(it); if (cachedP(k, WX_TTL) || seen.has(k)) return false; seen.add(k); return true; });
+  const total = Math.ceil(missing.length/40);
+  let got = 0;
+  if (onProg) onProg(total ? 0 : 1, total || 1);
   for (let i = 0; i < missing.length; i += 40){
     const chunk = missing.slice(i, i + 40);
     const req = getJSON(wxURL(chunk.map(it => it.wxPt), tz, d0, d1, withElev ? chunk.map(it => it.wxElevFt || 0) : null), {}, 25000)
       .then(j => Array.isArray(j) ? j : [j]);
+    if (onProg) req.then(() => onProg(++got, total), () => {});
     chunk.forEach((it, k) => memo(keyOf(it), WX_TTL, () => req.then(arr => {
       if (!arr[k]) throw new Error('forecast missing from response');
       return E.normWx(arr[k]);
@@ -1333,9 +1358,66 @@ function defaults(){
 }
 
 /* ---------- progress ---------- */
-const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', ob:'OpenBeta', snow:'Couloirs', osm:'OpenStreetMap'};
-function steps(st){
-  $('#steps').innerHTML = Object.entries(st).map(([k, v]) => `<li class="${v.s}">${esc(STEP_NAMES[k])}${v.note ? ': ' + esc(v.note) : ''}</li>`).join('');
+// One row per data source, each with its own bar. The bar fills where progress can actually
+// be counted (weather batches, the stages of an extra source); a single request whose progress
+// can't be known gets a sliding bar and an elapsed-seconds counter instead of a made-up percent.
+const STEP_LABEL = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', ob:'OpenBeta crags', snow:'Couloirs', osm:'OpenStreetMap'};
+const srcUI = {want: null, userToggled: false};
+$('#src').addEventListener('toggle', () => { if ($('#src').open !== srcUI.want) srcUI.userToggled = true; });
+function setSrcOpen(o){ srcUI.want = o; $('#src').open = o; }
+function makeProgress(keys, live){
+  const rows = Object.fromEntries(keys.map(k => [k, {s: 'idle', note: 'waiting', pct: null, t0: null}]));
+  const t0 = Date.now();
+  $('#srcList').innerHTML = keys.map(k => `<li class="src-row idle"><span class="nm">${esc(STEP_LABEL[k])}</span><span class="nt"></span>` +
+    `<span class="bar" role="progressbar" aria-label="${esc(STEP_LABEL[k])}" aria-valuemin="0" aria-valuemax="100"><i></i></span></li>`).join('');
+  $('#srcSegs').innerHTML = keys.map(() => '<i></i>').join('');
+  $('#src').hidden = false;
+  srcUI.userToggled = false; setSrcOpen(true);
+  let queued = false, finished = false;
+  const tick = setInterval(() => { if (!live() || finished) return clearInterval(tick); paint(); }, 1000);
+  function sched(){ if (!queued){ queued = true; setTimeout(paint, 30); } }
+  function paint(){
+    queued = false;
+    if (!live()) return;
+    const lis = $('#srcList').children, segs = $('#srcSegs').children;
+    keys.forEach((k, i) => {
+      const r = rows[k], li = lis[i];
+      if (!li) return;
+      const ind = r.s === 'run' && r.pct == null;
+      li.className = `src-row ${r.s}${ind ? ' ind' : ''}`;
+      let note = typeof r.note === 'function' ? r.note() : (r.note || '');
+      if (r.s === 'run' && r.t0 && Date.now() - r.t0 > 1500) note += ` · ${Math.round((Date.now() - r.t0)/1000)}s`;
+      li.children[1].textContent = note;
+      const bar = li.children[2];
+      bar.firstChild.style.width = r.s === 'run' && r.pct != null ? `${Math.max(4, Math.round(r.pct*100))}%` : '';
+      if (r.s === 'run' && r.pct != null) bar.setAttribute('aria-valuenow', Math.round(r.pct*100));
+      else if (r.s === 'ok' || r.s === 'warn') bar.setAttribute('aria-valuenow', 100);
+      else bar.removeAttribute('aria-valuenow');
+      segs[i].className = r.s === 'idle' ? '' : r.s;
+    });
+    const vals = keys.map(k => rows[k]);
+    const done = vals.filter(r => r.s === 'ok' || r.s === 'warn' || r.s === 'fail');
+    const fails = keys.filter(k => rows[k].s === 'fail');
+    let sum;
+    if (done.length < keys.length) sum = `Loading data: ${done.length} of ${keys.length} sources done`;
+    else if (fails.length) sum = `${keys.length - fails.length} of ${keys.length} sources loaded; ${fails.map(k => STEP_LABEL[k]).join(', ')} failed`;
+    else sum = `All ${keys.length} sources loaded in ${Math.max(1, Math.round((Date.now() - t0)/1000))} s`;
+    $('#srcSum').textContent = sum;
+    if (done.length === keys.length && !finished){
+      finished = true;
+      $('#srcLive').textContent = sum;
+      // Fold away once everything is green; stay open when something failed.
+      if (!fails.length) setTimeout(() => { if (live() && !srcUI.userToggled) setSrcOpen(false); }, 1500);
+    }
+  }
+  const P = {
+    run(k, note, pct = null){ const r = rows[k]; if (!r) return; if (r.s !== 'run') r.t0 = Date.now(); Object.assign(r, {s: 'run', note, pct}); sched(); },
+    prog(k, pct, note){ const r = rows[k]; if (!r || r.s !== 'run') return; r.pct = pct; if (note != null) r.note = note; sched(); },
+    done(k, s, note){ const r = rows[k]; if (!r) return; Object.assign(r, {s, note, pct: null}); sched(); },
+    stopAll(){ keys.forEach(k => { const r = rows[k]; if (r.s === 'run' || r.s === 'idle') Object.assign(r, {s: 'fail', note: r.s === 'idle' ? 'not started' : 'stopped', pct: null}); }); sched(); },
+  };
+  paint();
+  return P;
 }
 
 /* ---------- main ---------- */
@@ -1384,11 +1466,12 @@ async function run(){
   if (Eend <= S) return showErr('The end time has to be after the start time.');
   const my = ++state.req;
   const live = () => my === state.req;
-  const st = {loc:{s:'run'}, drive:{s:''}, wx:{s:''}, avy:{s:''}};
-  if (f.ob && f.acts.includes('climb')) st.ob = {s:''};
-  if (f.ob && f.acts.includes('ski')) st.snow = {s:''};
-  if (f.osm) st.osm = {s:''};
-  steps(st);
+  const keys = ['loc', 'drive', 'wx', 'avy'];
+  if (f.ob && f.acts.includes('climb')) keys.push('ob');
+  if (f.ob && f.acts.includes('ski')) keys.push('snow');
+  if (f.osm) keys.push('osm');
+  const P = makeProgress(keys, live);
+  P.run('loc', 'finding the place');
   try {
     const origin = await resolveOrigin(f.loc);
     if (!live()) return;
@@ -1396,10 +1479,11 @@ async function run(){
     state.picked = {label: origin.label, lat: origin.lat, lon: origin.lon};
     $('#loc').value = f.loc = origin.label;
     saveForm(f);
+    P.prog('loc', 0.5, 'local forecast and time zone');
     const d0 = daysBack(f.date, 2);
     const home = await homeWx(origin, d0, f.date);
     const tz = home.tz || 'auto';
-    st.loc = {s:'ok', note: origin.label}; steps(st);
+    P.done('loc', 'ok', origin.label);
 
     // Clip a window that has already started.
     const now = nowIn(tz);
@@ -1409,36 +1493,36 @@ async function run(){
     const daysOut = (Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10)) - Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate()))/(24*H);
     if (daysOut > 14) throw new Error('Forecasts only reach about two weeks out.');
 
+    P.run('avy', 'loading forecast areas');
     const avyP = getAvy().then(d => ({ok:true, d}), e => ({ok:false, e}));
+    avyP.then(a => { if (live()) P.done('avy', a.ok ? 'ok' : 'fail', a.ok ? 'forecast areas loaded' : `unavailable (${a.e.message || 'error'})`); });
     const xRadius = Math.min(f.drive*1.1, 170);
     const wrap = p => p.then(d => ({ok:true, d}), e => ({ok:false, e}));
     const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
     // Optional extra sources. Each loads in parallel and merges into the results when ready;
-    // a failure only marks its own step and never replaces the results already on screen.
+    // a failure only marks its own row and never replaces the results already on screen.
     const extras = [];
     if (f.ob && f.acts.includes('climb')) extras.push({key: 'ob', p: wrap(getObCached(origin, xRadius)),
+      search: 'searching api.openbeta.io', what: 'crags',
       items: d => enrichTerrain(obCandidates(d.groups, catalog, f, origin))});
     if (f.ob && f.acts.includes('ski')) extras.push({key: 'snow', p: wrap(couloirData(origin, xRadius, f)),
+      search: f.osm ? 'snow routes and trailheads' : 'searching snow routes', what: 'routes',
       items: d => finishCouloirs(couloirCandidates(d, catalog, origin))});
     if (f.osm) extras.push({key: 'osm', p: wrap(getOsmCached(origin, xRadius)),
+      search: () => `asking ${state.osmServer || 'Overpass'}`, what: 'finds',
       items: d => enrichTerrain(osmCandidates(d.elements, catalog, f, origin))});
-    if (extras.length){
-      const t0 = Date.now();
-      extras.forEach(x => st[x.key] = {s:'run', base:'searching'});
-      const tick = setInterval(() => {
-        const running = extras.filter(x => st[x.key] && st[x.key].s === 'run');
-        if (!live() || !running.length) return clearInterval(tick);
-        running.forEach(x => {
-          const via = x.key === 'osm' && st.osm.base === 'searching' && state.osmServer ? ` ${state.osmServer}` : '';
-          st[x.key].note = `${st[x.key].base}${via} ${Math.round((Date.now() - t0)/1000)}s`;
-        });
-        steps(st);
-      }, 1000);
-    }
-    st.avy = {s:'run'}; st.drive = {s:'run'}; steps(st);
+    extras.forEach(x => P.run(x.key, x.search));
 
     const ctxBase = {origin, tz, f, S: S2, E: Eend, d0, home, clipped};
-    const results = await scoreItems(catalog, ctxBase, avyP, st, live, true);
+    P.run('drive', 'routing');
+    const results = await scoreItems(catalog, ctxBase, avyP, live, true, {
+      driveStart: n => P.run('drive', `routing ${n} places`),
+      drive: (dt, pre, inRange) => P.done('drive', dt.routed === pre.length ? 'ok' : 'warn',
+        dt.routed === pre.length ? `${inRange.length} within ${E.fmtDur(f.drive)}` : `${inRange.length} in range, some estimated (routing unavailable)`),
+      wxStart: n => n ? P.run('wx', `forecasts for ${n} places`, 0) : P.done('wx', 'ok', 'nothing in range'),
+      wxProg: (d, t) => P.prog('wx', d/t),
+      wxDone: n => n && P.done('wx', 'ok', `${n} forecasts`),
+    });
     if (!live()) return;
     state.last = {ctx: ctxBase, results};
     render(state.last);
@@ -1449,25 +1533,29 @@ async function run(){
       try {
         const o = await x.p;
         if (!live()) return;
-        if (!o.ok){ st[x.key] = {s:'fail', note: (o.e.message || 'unavailable') + '. Results above are complete'}; steps(st); return; }
-        const picked = await x.items(o.d);
+        if (!o.ok){ P.done(x.key, 'fail', `${o.e.message || 'unavailable'}. Results above are complete`); return; }
         const cached = o.d.cached ? ', cached' : '';
-        if (!picked.length){ st[x.key] = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
-        st[x.key].base = `${picked.length} finds, checking weather`; steps(st);
-        const more = await scoreItems(picked, ctxBase, avyP, null, live, false);
+        P.prog(x.key, 0.2, `found, checking terrain${cached}`);
+        const picked = await x.items(o.d);
+        if (!live()) return;
+        if (!picked.length){ P.done(x.key, 'ok', `nothing new nearby${cached}`); return; }
+        P.prog(x.key, 0.4, `${picked.length} ${x.what}: drive times`);
+        const more = await scoreItems(picked, ctxBase, avyP, live, false, {
+          drive: (dt, pre, inRange) => P.prog(x.key, 0.55, `${inRange.length} in range: weather`),
+          wxProg: (d, t) => P.prog(x.key, 0.55 + 0.4*d/t),
+        });
         if (!live()) return;
         state.last.results = state.last.results.concat(more);
-        st[x.key] = {s:'ok', note:`${more.length} added${cached}`}; steps(st);
+        P.done(x.key, 'ok', `${more.length} added${cached}`);
         render(state.last);
       } catch (e){
         if (!live()) return;
-        st[x.key] = {s:'fail', note:'unavailable; results above are complete'}; steps(st);
+        P.done(x.key, 'fail', `${e.message || 'unavailable'}. Results above are complete`);
       }
     }));
   } catch (e){
     if (!live()) return;
-    for (const k in st) if (st[k].s === 'run') st[k] = {s:'fail'};
-    steps(st);
+    P.stopAll();
     const msg = (e.message || String(e)).replace(/\.$/, '');
     showErr(e.network ? `${cap(msg)}. ${NET_HELP}` : msg + '.');
   }
@@ -1527,23 +1615,21 @@ function updatePending(){
   el.hidden = false;
 }
 
-async function scoreItems(items, cb, avyP, st, live, withElev){
+async function scoreItems(items, cb, avyP, live, withElev, hooks = {}){
   const {origin, f, tz, d0, S, E: Eend} = cb;
+  const h = (name, ...a) => { if (hooks[name]) hooks[name](...a); };
   // Straight-line prefilter: nothing farther than ~68 mph as the crow flies.
   const pre = items.filter(it => E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon) <= f.drive/60*110);
+  h('driveStart', pre.length);
   const dt = await driveTimes(origin, pre);
   if (!live()) return [];
   const inRange = pre.filter(it => dt.res.get(it.id).min <= f.drive);
-  if (st){
-    st.drive = {s: dt.routed === pre.length ? 'ok' : 'warn', note: dt.routed === pre.length ? `${inRange.length} within ${E.fmtDur(f.drive)}` : `${inRange.length} in range, some estimated`};
-    st.wx = {s:'run'}; steps(st);
-  }
-  if (!inRange.length){ if (st){ st.wx = {s:'ok', note:'nothing to fetch'}; steps(st); } }
-  const wx = inRange.length ? await weatherFor(inRange, tz, d0, f.date, withElev) : new Map();
+  h('drive', dt, pre, inRange);
+  h('wxStart', inRange.length);
+  const wx = inRange.length ? await weatherFor(inRange, tz, d0, f.date, withElev, (d, t) => h('wxProg', d, t)) : new Map();
   if (!live()) return [];
-  if (st){ st.wx = {s:'ok'}; steps(st); }
+  h('wxDone', inRange.length);
   const avy = await avyP;
-  if (st){ st.avy = avy.ok ? {s:'ok'} : {s:'fail', note: 'unavailable'}; steps(st); }
   cb.avyOk = avy.ok;
   const month = +f.date.slice(5,7);
   return inRange.map(it => {
@@ -1710,8 +1796,8 @@ function zonesBlock(results, ctx){
   return `<div><h2>Avalanche</h2>${body}</div>`;
 }
 
-function render(state){
-  const {ctx, results} = state;
+function render(view){
+  const {ctx, results} = view;
   const f = ctx.f;
   const byAct = {};
   f.acts.forEach(a => byAct[a] = []);
@@ -1732,15 +1818,30 @@ function render(state){
     const g = ok.filter(r => r.verdict === 0).length, c = ok.length - g;
     const cards = ok.length ? `<div class="list">${ok.map(card).join('')}</div>`
       : `<div class="empty">${list.length ? 'Nothing works in this window. The ruled-out list says why.' : `Nothing within ${E.fmtDur(f.drive)}. Try a longer drive${f.osm ? '' : ' or add OpenStreetMap finds'}.`}</div>`;
-    const ruled = out.length ? `<details class="ruled"><summary>Ruled out (${out.length})</summary><ul>${out.map(r => {
+    // Each ruled-out line expands into the same full card; the card is built on first open.
+    const ruled = out.length ? `<details class="ruled" data-act="${a}"><summary>Ruled out (${out.length})</summary><ul>${out.map(r => {
       const why = r.flags.find(x => x.level === 2);
-      return `<li><b>${esc(r.item.name)}</b> <span>· ${E.fmtDur(r.drive.min)} · ${esc(why ? why.text : '')}</span></li>`;
+      return `<li><details class="ro" data-id="${esc(r.item.id)}"><summary><b>${esc(r.item.name)}</b> <span>· ${E.fmtDur(r.drive.min)} · ${esc(why ? why.text : '')}</span></summary><div class="ro-card"></div></details></li>`;
     }).join('')}</ul></details>` : '';
     return `<section class="act" id="sec-${a}"><h2>${ACT[a]} <small>${g} go · ${c} caution · ${out.length} ruled out</small></h2>${cards}${ruled}</section>`;
   }).join('');
 
+  // Late results (OpenBeta, OpenStreetMap) re-render the page; keep whatever ruled-out
+  // lists and cards were open so a card doesn't snap shut while you're reading it.
+  const openLists = [...document.querySelectorAll('#out details.ruled[open]')].map(d => d.dataset.act);
+  const openCards = [...document.querySelectorAll('#out details.ro[open]')].map(d => d.dataset.id);
+  state.byId = new Map(results.map(r => [r.item.id, r]));
   $('#out').innerHTML = `<div class="band">${homeBlock(ctx)}${zonesBlock(results, ctx)}</div><nav class="jump" aria-label="Activities">${jump}</nav>${sections}`;
+  document.querySelectorAll('#out details.ruled').forEach(d => { if (openLists.includes(d.dataset.act)) d.open = true; });
+  document.querySelectorAll('#out details.ro').forEach(d => { if (openCards.includes(d.dataset.id)) d.open = true; });
 }
+function fillRuledCard(d){
+  const slot = d.querySelector('.ro-card');
+  const r = state.byId && state.byId.get(d.dataset.id);
+  if (slot && r && !slot.childElementCount) slot.innerHTML = card(r);
+}
+// 'toggle' doesn't bubble, so listen in the capture phase.
+$('#out').addEventListener('toggle', e => { if (e.target.matches && e.target.matches('details.ro') && e.target.open) fillRuledCard(e.target); }, true);
 
 /* ---------- masthead contours (index contour every 5th line) ---------- */
 function drawTopo(){
