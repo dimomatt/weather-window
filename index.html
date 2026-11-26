@@ -273,7 +273,7 @@ footer p{margin:0;max-width:70ch}
   <footer>
     <p>A planning filter, not a forecast. Read the full avalanche forecast and check road and trail status before you go.</p>
     <p>Ski ratings combine each zone's headline (highest) avalanche danger with the line's terrain class (ATES) in a conservative matrix. Catalog distances, gains and elevations are approximate; ski-line aspects and elevations follow Front Range Ski Mountaineering and Powder Project route pages. Modeled snow depth comes from a weather model grid and can miss local wind-scour or drifts.</p>
-    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Avalanche danger from <a href="https://avalanche.org/">avalanche.org</a> and member centers. Routing by <a href="https://project-osrm.org/">OSRM</a>. Climbing areas from <a href="https://openbeta.io/">OpenBeta</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
+    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Avalanche danger from <a href="https://avalanche.org/">avalanche.org</a> and member centers. Routing by <a href="https://project-osrm.org/">OSRM</a>. Climbing areas and snow routes from <a href="https://openbeta.io/">OpenBeta</a>. Terrain aspect from Copernicus GLO-90 elevation data via Open-Meteo. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
   </footer>
 </main>
 
@@ -748,14 +748,17 @@ function evaluate(it, ctx){
     if (!zone) push(1, 'Outside avalanche forecast coverage');
     else if (zone.offSeason || !(zone.danger >= 1)) push(1, `No avalanche danger rating for this area today${zone.offSeason ? ' (center is off-season)' : ''}`);
     else {
-      const lv = avyMatrix(zone.danger, it.ates);
-      push(lv, `Avalanche danger ${zone.danger} (${DANGER[zone.danger]}) in ${it.unrated ? 'unrated' : it.ates} terrain`);
+      const lv = Math.max(avyMatrix(zone.danger, it.ates), it.unrated ? 1 : 0);
+      push(lv, it.unrated
+        ? `Avalanche danger ${zone.danger} (${DANGER[zone.danger]}); terrain not rated, assumed ${it.ates}`
+        : `Avalanche danger ${zone.danger} (${DANGER[zone.danger]}) in ${it.ates} terrain`);
       if (ctx.zoneValidThrough && date > ctx.zoneValidThrough) push(1, `Avalanche forecast is only valid through ${ctx.zoneValidThrough}; check the new one before you go`);
     }
-    if (it.unrated) push(1, 'Terrain not rated (OpenStreetMap route); treated as challenging terrain');
   }
   if (it.source === 'osm' && it.type !== 'ski') push(0, 'From OpenStreetMap; details not verified');
-  if (it.source === 'openbeta') push(0, 'From OpenBeta: rock type and wall aspect are unknown, so sun and drying use middle-of-the-road assumptions');
+  if (it.source === 'openbeta' && it.type === 'climb') push(0, it.aspectSource === 'terrain'
+    ? 'From OpenBeta: rock type unknown, so drying uses middle-of-the-road assumptions; aspect is estimated from a terrain model'
+    : 'From OpenBeta: rock type and wall aspect are unknown, so sun and drying use middle-of-the-road assumptions');
 
   const verdict = Math.max(0, ...flags.map(f => f.level));
   const blk = best ? hours.slice(best.s, best.s + best.k) : [];
@@ -983,7 +986,7 @@ const getAvy = () => memo('avy', 30*MIN, () => getJSON('https://api.avalanche.or
 // queries in parallel. So: one server at a time, the server's own timeout shorter than ours
 // (an abandoned request would otherwise keep holding a query slot), a cool-down for any
 // server that answers 429 or times out, and one query per place, cached for a week.
-const OSM_TAGS = /^(name|route|network|distance|sac_scale|climbing.*|indoor|leisure|piste:type)$/;
+const OSM_TAGS = /^(name|route|network|distance|sac_scale|climbing.*|indoor|leisure|piste:type|highway|ele)$/;
 const OVERPASS = [
   {url: 'https://overpass.private.coffee/api/interpreter', name: 'private.coffee'},
   {url: 'https://overpass-api.de/api/interpreter', name: 'overpass-api.de'},
@@ -991,7 +994,7 @@ const OVERPASS = [
 ];
 const OSM_BUCKETS = [90, 170];               // search-box half-widths in km
 const osmDown = new Map();                    // server url -> cool-down end (ms)
-const osmKey = (origin, b) => `ww.osm.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
+const osmKey = (origin, b) => `ww.osm2.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
 const osmBucket = radiusKm => OSM_BUCKETS.find(b => b >= radiusKm) || OSM_BUCKETS[OSM_BUCKETS.length - 1];
 async function getOsm(origin, radiusKm){
   const r = osmBucket(radiusKm);
@@ -1008,7 +1011,8 @@ async function getOsm(origin, radiusKm){
     `relation["route"~"^(hiking|foot|running)$"]["name"]["network"!~"^(nwn|iwn|rwn)$"];` +
     `nwr["climbing"~"^(crag|area|boulder)$"]["name"];` +
     `nwr["piste:type"~"^(skitour|backcountry)$"]["name"];` +
-    `);out tags center 1500;`;
+    `);out tags center 1500;` +
+    `node["highway"="trailhead"];out body 3000;`;
   const usable = OVERPASS.filter(sv => !(osmDown.get(sv.url) > Date.now()));
   if (!usable.length) throw new Error('every OpenStreetMap server is cooling down after errors; try again in a minute or two');
   const tried = [];
@@ -1080,21 +1084,27 @@ function groupOpenBeta(leaves){
   }
   return [...g.values()].map(({w, ...x}) => ({...x, lat: +(x.lat/w).toFixed(5), lon: +(x.lon/w).toFixed(5)}));
 }
-const obKey = (origin, b) => `ww.ob.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
+const obKey = (origin, b) => `ww.ob2.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
 async function getOpenBeta(origin, radiusKm){
   const r = osmBucket(radiusKm);
   for (const b of OSM_BUCKETS.filter(b => b >= r)){
     try {
       const c = JSON.parse(localStorage.getItem(obKey(origin, b)) || 'null');
-      if (c && Date.now() - c.at < 7*24*H) return {groups: c.groups, cached: true};
+      if (c && Date.now() - c.at < 7*24*H) return {groups: c.groups, snowLeaves: c.snowLeaves || [], cached: true};
     } catch {}
   }
   const j = await getJSON(OB_URL, {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({query: OB_QUERY, variables: {lat: origin.lat, lng: origin.lon, max: Math.round(r*1000)}})}, 30000);
   if (!j.data || !j.data.cragsNear) throw new Error('OpenBeta: ' + ((j.errors && j.errors[0] && j.errors[0].message) || 'no data'));
-  const groups = groupOpenBeta(j.data.cragsNear.flatMap(b => b.crags || []));
-  try { localStorage.setItem(obKey(origin, r), JSON.stringify({at: Date.now(), groups})); } catch {}
-  return {groups, cached: false};
+  const leaves = j.data.cragsNear.flatMap(b => b.crags || []);
+  const groups = groupOpenBeta(leaves);
+  // Walls with snow routes (couloirs, snowfields): candidates for ski lines.
+  const snowLeaves = leaves.filter(a => {
+    const d = a.aggregate && a.aggregate.byDiscipline;
+    return d && d.snow && d.snow.total > 0 && a.metadata && a.metadata.lat != null && /^[0-9a-f-]{36}$/i.test(a.uuid);
+  }).map(a => ({uuid: a.uuid, name: a.areaName, parent: (a.pathTokens || []).slice(-2, -1)[0] || '', lat: a.metadata.lat, lon: a.metadata.lng}));
+  try { localStorage.setItem(obKey(origin, r), JSON.stringify({at: Date.now(), groups, snowLeaves})); } catch {}
+  return {groups, snowLeaves, cached: false};
 }
 function getObCached(origin, radiusKm){
   const r = osmBucket(radiusKm), o2 = `${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
@@ -1126,6 +1136,176 @@ function obCandidates(groups, catalog, f, origin){
   return out.sort((a, b) => b._rank - a._rank).slice(0, 40);
 }
 
+// Snow routes on the nearest 60 snow walls, in one aliased GraphQL request; cached a week.
+async function getObSnow(origin, r, snowLeaves){
+  const key = `ww.obs.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${r}`;
+  try {
+    const c = JSON.parse(localStorage.getItem(key) || 'null');
+    if (c && Date.now() - c.at < 7*24*H) return {routes: c.routes, cached: true};
+  } catch {}
+  const leaves = snowLeaves.slice().sort((a, b) =>
+    E.haversineKm(origin.lat, origin.lon, a.lat, a.lon) - E.haversineKm(origin.lat, origin.lon, b.lat, b.lon)).slice(0, 60);
+  if (!leaves.length) return {routes: [], cached: false};
+  const fields = 'uuid name length grades { yds } type { snow ice mixed alpine } metadata { lat lng mp_id } content { description location }';
+  const q = '{' + leaves.map((l, i) => `a${i}: area(uuid: "${l.uuid}") { climbs { ${fields} } }`).join(' ') + '}';
+  const j = await getJSON(OB_URL, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({query: q})}, 30000);
+  if (!j.data) throw new Error('OpenBeta: ' + ((j.errors && j.errors[0] && j.errors[0].message) || 'no data'));
+  const routes = [];
+  leaves.forEach((l, i) => {
+    for (const c of ((j.data[`a${i}`] || {}).climbs || [])){
+      if (!c.type || !c.type.snow) continue;
+      const m = c.metadata || {};
+      const text = [c.content && c.content.description, c.content && c.content.location].filter(Boolean).join(' ');
+      routes.push({uuid: c.uuid, name: c.name, wall: l.name, peak: l.parent, lat: m.lat ?? l.lat, lon: m.lng ?? l.lon,
+        lengthM: c.length > 0 ? c.length : null, grade: (c.grades && c.grades.yds) || '', mp: m.mp_id || '',
+        textAspect: aspectFromText(text)});
+    }
+  });
+  try { localStorage.setItem(key, JSON.stringify({at: Date.now(), routes})); } catch {}
+  return {routes, cached: false};
+}
+// Snow routes plus trailheads to park at. Trailheads come from the OpenStreetMap search when it's on.
+async function couloirData(origin, radiusKm, f){
+  const [snow, osm] = await Promise.all([getObSnowCached(origin, radiusKm),
+    f.osm ? getOsmCached(origin, radiusKm).catch(() => null) : null]);
+  const trailheads = osm ? osm.elements.filter(e => e.type === 'node' && e.tags && e.tags.highway === 'trailhead' && e.lat != null) : [];
+  return {routes: snow.routes, trailheads, cached: snow.cached};
+}
+function getObSnowCached(origin, radiusKm){
+  const r = osmBucket(radiusKm), o2 = `${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
+  return memo(`obs|${o2}|${r}`, 60*MIN, async () => getObSnow(origin, r, (await getObCached(origin, r)).snowLeaves || []));
+}
+// "north-facing", "NE face", "the east face" -> 'N', 'NE', 'E'
+const DIRS = {north:'N', northeast:'NE', east:'E', southeast:'SE', south:'S', southwest:'SW', west:'W', northwest:'NW',
+  n:'N', ne:'NE', e:'E', se:'SE', s:'S', sw:'SW', w:'W', nw:'NW'};
+function aspectFromText(t){
+  if (!t) return null;
+  const lc = t.toLowerCase();
+  const m = lc.match(/\b((?:north|south)[- ]?(?:east|west)|north|south|east|west)[- ](?:facing|face)\b/)
+    || lc.match(/\b(ne|nw|se|sw|n|s|e|w)-facing\b/);
+  return m ? DIRS[m[1].replace(/[- ]/g, '')] || null : null;
+}
+// Couloir candidates: snow routes not already in the catalog, parked at the nearest mapped
+// trailhead (from OpenStreetMap) within 15 km. Treated as complex avalanche terrain.
+function couloirCandidates(d, catalog, origin){
+  const cat = catalog.filter(c => c.type === 'ski');
+  const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const ths = d.trailheads || [];
+  const out = [];
+  for (const r of d.routes){
+    if (r.lat == null || r.lon == null) continue;
+    if (cat.some(c => E.haversineKm(c.wxPt.lat, c.wxPt.lon, r.lat, r.lon) < 3 && norm(c.name).includes(norm(r.name)))) continue;
+    if (out.some(o => norm(o.name) === norm(r.name) && E.haversineKm(o.line[0], o.line[1], r.lat, r.lon) < 2)) continue;
+    let th = null, km = Infinity;
+    for (const t of ths){ const k = E.haversineKm(r.lat, r.lon, t.lat, t.lon); if (k < km){ km = k; th = t; } }
+    if (km > 15) th = null;
+    out.push({id: `obs-${r.uuid}`, type: 'ski', source: 'openbeta', couloir: true, name: r.name,
+      area: [r.wall, r.peak].filter((x, i, a) => x && a.indexOf(x) === i).join(', '),
+      line: [r.lat, r.lon], lat: th ? th.lat : r.lat, lon: th ? th.lon : r.lon,
+      thName: th ? (th.tags.name || 'unnamed trailhead') : null, thKm: th ? km : null,
+      thEleM: th && th.tags.ele ? parseFloat(th.tags.ele) : null,
+      aspects: r.textAspect ? [r.textAspect] : ['mixed'], aspectSource: r.textAspect ? 'description' : null,
+      ates: 'complex', unrated: true, grade: r.grade, lengthFt: r.lengthM ? r.lengthM*3.281 : null,
+      obUrl: `https://openbeta.io/climb/${r.uuid}`, mpUrl: r.mp ? `https://www.mountainproject.com/route/${r.mp}` : null,
+      _km: E.haversineKm(origin.lat, origin.lon, r.lat, r.lon)});
+  }
+  return out.sort((a, b) => a._km - b._km).slice(0, 25);
+}
+// Fill in elevations and durations once the terrain model has answered, then prepare.
+async function finishCouloirs(raw){
+  await enrichTerrain(raw);
+  const noEle = raw.filter(c => c.demElevFt == null);
+  (await elevAt(noEle.map(c => ({lat: c.line[0], lon: c.line[1]})))).forEach((e, i) => { if (e != null) noEle[i].demElevFt = e; });
+  const thPts = raw.filter(c => c.thName && c.thEleM == null).map(c => ({lat: c.lat, lon: c.lon}));
+  const thEle = await elevAt(thPts);
+  let k = 0;
+  return raw.map(c => {
+    const topFt = c.demElevFt || null;
+    const thFt = c.thEleM != null ? c.thEleM*3.281 : c.thName ? (thEle[k++] ?? null) : null;
+    const lenFt = c.lengthFt || 1000;
+    const note = c.thName
+      ? `Parking estimate: ${c.thName}, ${c.thKm.toFixed(1)} km from the route in a straight line. Approach, winter road closures and the exact line aren't known for OpenBeta routes.`
+      : 'No mapped trailhead within 15 km, so the drive time is to the nearest road. Approach and winter road closures are unknown.';
+    return E.prepare({...c, top: topFt ? Math.round(topFt) : null, bottom: topFt ? Math.round(topFt - lenFt) : null,
+      thElev: thFt ? Math.round(thFt) : (topFt ? Math.round(topFt - 2000) : null),
+      approachMi: c.thKm ? c.thKm*0.6214*1.3 : 2, minSession: 180, note});
+  });
+}
+
+/* ---------- terrain model: aspect and slope from elevation data ----------
+   For anything without a known aspect (OpenBeta crags and couloirs, OpenStreetMap finds),
+   sample a 3x3 grid of elevations 150 m apart from Open-Meteo's elevation service (90 m DEM)
+   and take the downslope direction (Horn's method). Terrain doesn't change, so results are
+   kept in browser storage indefinitely. Coarse: right for a broad face, rough for a narrow gully. */
+const DEM_STEP = 150;
+const dem = (() => { try { return JSON.parse(localStorage.getItem('ww.dem') || '{}'); } catch { return {}; } })();
+let demSaveT = null;
+function demSave(){ clearTimeout(demSaveT); demSaveT = setTimeout(() => {
+  try {
+    const keys = Object.keys(dem);
+    if (keys.length > 3000) keys.slice(0, keys.length - 3000).forEach(k => delete dem[k]);
+    localStorage.setItem('ww.dem', JSON.stringify(dem));
+  } catch {}
+}, 500); }
+const demKey = p => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+async function elevRaw(pts){ // meters, batches of 100, three requests at a time
+  const out = new Array(pts.length).fill(null), jobs = [];
+  for (let i = 0; i < pts.length; i += 100) jobs.push(i);
+  const run = async i => {
+    const chunk = pts.slice(i, i + 100);
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${chunk.map(p => p.lat.toFixed(5)).join(',')}&longitude=${chunk.map(p => p.lon.toFixed(5)).join(',')}`;
+    const j = await memo('elev|' + url, 24*60*MIN, () => getJSON(url, {}, 20000));
+    (j.elevation || []).forEach((e, k) => out[i + k] = e);
+  };
+  for (let k = 0; k < jobs.length; k += 3) await Promise.all(jobs.slice(k, k + 3).map(run));
+  return out;
+}
+async function elevAt(points){ // feet, single samples (trailheads)
+  const miss = points.filter(p => !(dem[demKey(p)] && dem[demKey(p)].e != null));
+  if (miss.length){
+    try {
+      const e = await elevRaw(miss);
+      miss.forEach((p, i) => { if (e[i] != null) dem[demKey(p)] = Object.assign(dem[demKey(p)] || {}, {e: e[i]}); });
+      demSave();
+    } catch {}
+  }
+  return points.map(p => dem[demKey(p)] && dem[demKey(p)].e != null ? dem[demKey(p)].e*3.281 : null);
+}
+async function enrichTerrain(items){
+  const todo = items.filter(it => it.source !== 'catalog' && (it.type === 'climb' || it.type === 'ski') &&
+    (!it.aspects || it.aspects.includes('mixed')) && it.aspectSource !== 'description');
+  const pts = todo.map(it => it.line ? {lat: it.line[0], lon: it.line[1]} : {lat: it.lat, lon: it.lon});
+  const miss = pts.filter(p => !(dem[demKey(p)] && dem[demKey(p)].a !== undefined));
+  if (miss.length){
+    const samples = [];
+    miss.forEach(p => {
+      const dLat = DEM_STEP/111320, dLon = DEM_STEP/(111320*Math.cos(p.lat*Math.PI/180));
+      for (const r of [1, 0, -1]) for (const c of [-1, 0, 1]) samples.push({lat: p.lat + r*dLat, lon: p.lon + c*dLon});
+    });
+    try {
+      const z = await elevRaw(samples);
+      miss.forEach((p, i) => {
+        const g = z.slice(i*9, i*9 + 9); // rows north to south, columns west to east
+        if (g.some(v => v == null)) return;
+        const dzdx = ((g[2] + 2*g[5] + g[8]) - (g[0] + 2*g[3] + g[6]))/(8*DEM_STEP);
+        const dzdy = ((g[0] + 2*g[1] + g[2]) - (g[6] + 2*g[7] + g[8]))/(8*DEM_STEP);
+        const slope = Math.atan(Math.hypot(dzdx, dzdy))*180/Math.PI;
+        const az = (Math.atan2(-dzdx, -dzdy)*180/Math.PI + 360) % 360; // downslope direction, clockwise from north
+        dem[demKey(p)] = {e: g[4], s: Math.round(slope), a: slope >= 8 ? E.ASPECTS[Math.round(az/45) % 8] : null};
+      });
+      demSave();
+    } catch {}
+  }
+  todo.forEach((it, i) => {
+    const t = dem[demKey(pts[i])];
+    if (!t) return;
+    if (t.e != null) it.demElevFt = t.e*3.281;
+    it.slope = t.s;
+    if (t.a){ it.aspects = [t.a]; it.aspectSource = 'terrain'; }
+  });
+  return items;
+}
+
 /* ---------- date / time ---------- */
 const pad = n => String(n).padStart(2, '0');
 function nowIn(tz){
@@ -1153,7 +1333,7 @@ function defaults(){
 }
 
 /* ---------- progress ---------- */
-const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', ob:'OpenBeta', osm:'OpenStreetMap'};
+const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', ob:'OpenBeta', snow:'Couloirs', osm:'OpenStreetMap'};
 function steps(st){
   $('#steps').innerHTML = Object.entries(st).map(([k, v]) => `<li class="${v.s}">${esc(STEP_NAMES[k])}${v.note ? ': ' + esc(v.note) : ''}</li>`).join('');
 }
@@ -1206,6 +1386,7 @@ async function run(){
   const live = () => my === state.req;
   const st = {loc:{s:'run'}, drive:{s:''}, wx:{s:''}, avy:{s:''}};
   if (f.ob && f.acts.includes('climb')) st.ob = {s:''};
+  if (f.ob && f.acts.includes('ski')) st.snow = {s:''};
   if (f.osm) st.osm = {s:''};
   steps(st);
   try {
@@ -1236,9 +1417,11 @@ async function run(){
     // a failure only marks its own step and never replaces the results already on screen.
     const extras = [];
     if (f.ob && f.acts.includes('climb')) extras.push({key: 'ob', p: wrap(getObCached(origin, xRadius)),
-      items: d => obCandidates(d.groups, catalog, f, origin)});
+      items: d => enrichTerrain(obCandidates(d.groups, catalog, f, origin))});
+    if (f.ob && f.acts.includes('ski')) extras.push({key: 'snow', p: wrap(couloirData(origin, xRadius, f)),
+      items: d => finishCouloirs(couloirCandidates(d, catalog, origin))});
     if (f.osm) extras.push({key: 'osm', p: wrap(getOsmCached(origin, xRadius)),
-      items: d => osmCandidates(d.elements, catalog, f, origin)});
+      items: d => enrichTerrain(osmCandidates(d.elements, catalog, f, origin))});
     if (extras.length){
       const t0 = Date.now();
       extras.forEach(x => st[x.key] = {s:'run', base:'searching'});
@@ -1267,7 +1450,7 @@ async function run(){
         const o = await x.p;
         if (!live()) return;
         if (!o.ok){ st[x.key] = {s:'fail', note: (o.e.message || 'unavailable') + '. Results above are complete'}; steps(st); return; }
-        const picked = x.items(o.d);
+        const picked = await x.items(o.d);
         const cached = o.d.cached ? ', cached' : '';
         if (!picked.length){ st[x.key] = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
         st[x.key].base = `${picked.length} finds, checking weather`; steps(st);
@@ -1320,9 +1503,11 @@ async function prefetch(){
     const obP = f.ob && f.acts.includes('climb') ? getObCached(origin, xRadius).catch(() => null) : null;
     await warm(catalog, origin, f, tz, d0, true);
     if (live()) setPf('ready');
+    const snowP = f.ob && f.acts.includes('ski') ? couloirData(origin, xRadius, f).catch(() => null) : null;
     await Promise.all([
-      obP && obP.then(o => o && live() && warm(obCandidates(o.groups, catalog, f, origin), origin, f, tz, d0, false)),
-      osmP && osmP.then(o => o && live() && warm(osmCandidates(o.elements, catalog, f, origin), origin, f, tz, d0, false)),
+      obP && obP.then(async o => o && live() && warm(await enrichTerrain(obCandidates(o.groups, catalog, f, origin)), origin, f, tz, d0, false)),
+      snowP && snowP.then(async d => d && live() && warm(await finishCouloirs(couloirCandidates(d, catalog, origin)), origin, f, tz, d0, false)),
+      osmP && osmP.then(async o => o && live() && warm(await enrichTerrain(osmCandidates(o.elements, catalog, f, origin)), origin, f, tz, d0, false)),
     ]);
   } catch {
     if (live()) setPf('');
@@ -1389,6 +1574,8 @@ function rose(aspects){
   return `<svg class="rose" viewBox="0 0 30 30" width="28" height="28" aria-hidden="true">${paths}</svg>`;
 }
 const aspectText = a => a.includes('mixed') ? 'Mixed aspects' : a.join(', ') + '-facing';
+const aspectSrc = it => it.aspectSource === 'terrain' ? ` <span class="k">(terrain model${it.slope ? `, ~${it.slope}° slope` : ''})</span>`
+  : it.aspectSource === 'description' ? ' <span class="k">(route description)</span>' : '';
 const n0 = v => Math.round(v).toLocaleString('en-US');
 const TECH = {1:'Smooth', 2:'Moderate', 3:'Technical'};
 const ATES = {simple:'Simple', challenging:'Challenging', complex:'Complex'};
@@ -1411,16 +1598,23 @@ function facts(r){
       const r = it.routes, parts = [];
       if (r.sport) parts.push(`${r.sport} sport`); if (r.trad) parts.push(`${r.trad} trad`);
       if (r.tr) parts.push(`${r.tr} TR`); if (r.boulder) parts.push(`${r.boulder} boulder`);
-      out.push(`<span class="aspect">${rose(it.aspects)}Aspect unknown</span>`);
+      out.push(`<span class="aspect">${rose(it.aspects)}${it.aspectSource ? esc(aspectText(it.aspects)) + aspectSrc(it) : 'Aspect unknown'}</span>`);
       out.push(`<span><span class="num">${n0(r.total)}</span> routes: ${esc(parts.join(', '))}</span>`);
     } else {
-      out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
+      out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}${aspectSrc(it)}</span>`);
       out.push(`<span>${esc(cap(it.rock || ''))}</span>`);
       out.push(`<span>${esc((it.styles || []).map(s => s === 'multi' ? 'multipitch' : s).join(', '))}</span>`);
       out.push(`<span><span class="k">Approach</span> <span class="num">${it.approach}</span> min</span>`);
     }
+  } else if (it.couloir){
+    out.push(`<span class="aspect">${rose(it.aspects)}${it.aspectSource ? esc(aspectText(it.aspects)) + aspectSrc(it) : 'Aspect unknown'}</span>`);
+    if (it.grade) out.push(`<span>${esc(it.grade)}</span>`);
+    if (it.top) out.push(`<span><span class="k">Route marker</span> <span class="num">~${n0(it.top)}</span> ft</span>`);
+    if (it.lengthFt) out.push(`<span><span class="num">~${n0(it.lengthFt)}</span> ft long</span>`);
+    out.push(`<span><span class="k">ATES</span> unrated, treated as complex</span>`);
+    out.push(dangerChip(r.zone));
   } else {
-    out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
+    out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}${aspectSrc(it)}</span>`);
     if (it.top) out.push(`<span><span class="num">${n0(it.top)}</span>→<span class="num">${n0(it.bottom)}</span> ft</span>`);
     if (it.top && it.thElev) out.push(`<span><span class="num">${n0(Math.max(0, it.top - it.thElev))}</span> ft up</span>`);
     out.push(`<span><span class="k">ATES</span> ${esc(it.unrated ? 'unrated' : ATES[it.ates])}</span>`);
@@ -1470,6 +1664,7 @@ function links(r){
   if (it.src) out.push(`<a href="${esc(it.src)}" target="_blank" rel="noopener">Route info</a>`);
   if (it.osmUrl) out.push(`<a href="${esc(it.osmUrl)}" target="_blank" rel="noopener">OpenStreetMap</a>`);
   if (it.obUrl) out.push(`<a href="${esc(it.obUrl)}" target="_blank" rel="noopener">OpenBeta</a>`);
+  if (it.mpUrl) out.push(`<a href="${esc(it.mpUrl)}" target="_blank" rel="noopener">Mountain Project</a>`);
   if (it.type === 'climb' && it.source !== 'osm') out.push(`<a href="https://www.mountainproject.com/search?q=${encodeURIComponent(it.name.split(':').pop().trim())}" target="_blank" rel="noopener">Mountain Project</a>`);
   return `<div class="links">${out.join('')}</div>`;
 }
