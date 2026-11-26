@@ -258,6 +258,7 @@ footer p{margin:0;max-width:70ch}
         </div>
       </fieldset>
     </div>
+    <label class="check"><input type="checkbox" id="ob" checked> <span>Add OpenBeta crags (route counts by style; rock type and aspect unknown)</span></label>
     <label class="check"><input type="checkbox" id="osm" checked> <span>Add OpenStreetMap trails, crags and ski routes (works outside Colorado; fewer details)</span></label>
     </div>
     </details>
@@ -272,7 +273,7 @@ footer p{margin:0;max-width:70ch}
   <footer>
     <p>A planning filter, not a forecast. Read the full avalanche forecast and check road and trail status before you go.</p>
     <p>Ski ratings combine each zone's headline (highest) avalanche danger with the line's terrain class (ATES) in a conservative matrix. Catalog distances, gains and elevations are approximate; ski-line aspects and elevations follow Front Range Ski Mountaineering and Powder Project route pages. Modeled snow depth comes from a weather model grid and can miss local wind-scour or drifts.</p>
-    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Avalanche danger from <a href="https://avalanche.org/">avalanche.org</a> and member centers. Routing by <a href="https://project-osrm.org/">OSRM</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
+    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Avalanche danger from <a href="https://avalanche.org/">avalanche.org</a> and member centers. Routing by <a href="https://project-osrm.org/">OSRM</a>. Climbing areas from <a href="https://openbeta.io/">OpenBeta</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
   </footer>
 </main>
 
@@ -754,6 +755,7 @@ function evaluate(it, ctx){
     if (it.unrated) push(1, 'Terrain not rated (OpenStreetMap route); treated as challenging terrain');
   }
   if (it.source === 'osm' && it.type !== 'ski') push(0, 'From OpenStreetMap; details not verified');
+  if (it.source === 'openbeta') push(0, 'From OpenBeta: rock type and wall aspect are unknown, so sun and drying use middle-of-the-road assumptions');
 
   const verdict = Math.max(0, ...flags.map(f => f.level));
   const blk = best ? hours.slice(best.s, best.s + best.k) : [];
@@ -785,6 +787,7 @@ const STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'Californ
 const ABBR = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
 const ACT = {run:'Trail runs', climb:'Climbs', ski:'Ski lines'};
 const VERDICT = ['Go', 'Caution', 'No-go'];
+const SOURCE_TAG = {osm: 'OSM', openbeta: 'OpenBeta'};
 const state = {req:0, shown:null, osmServer:'', picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
 
 /* ---------- storage (best effort) ---------- */
@@ -1044,6 +1047,85 @@ function osmCandidates(elements, catalog, f, origin){
   return Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
 }
 
+// OpenBeta: open climbing database (CC0 data, much of it from Mountain Project) with a free
+// GraphQL API at api.openbeta.io. cragsNear returns every wall ("leaf" area) within a radius,
+// with route counts by discipline. Walls are grouped by their parent area (a crag or sector),
+// which is the right size for a card. The grouped result is cached for a week per place.
+const OB_URL = 'https://api.openbeta.io/';
+const OB_QUERY = `query Near($lat: Float, $lng: Float, $max: Int) {
+  cragsNear(lnglat: {lat: $lat, lng: $lng}, maxDistance: $max, includeCrags: true) {
+    _id
+    crags { uuid areaName pathTokens ancestors totalClimbs
+      metadata { lat lng isBoulder }
+      aggregate { byDiscipline { sport { total } trad { total } bouldering { total } tr { total } alpine { total } snow { total } ice { total } mixed { total } } }
+    }
+  }
+}`;
+function groupOpenBeta(leaves){
+  const g = new Map();
+  for (const a of leaves){
+    const m = a.metadata || {};
+    if (m.lat == null || m.lng == null) continue;
+    const pt = a.pathTokens || [], an = a.ancestors || [], n = pt.length;
+    const key = n >= 2 && an[n - 2] ? an[n - 2] : a.uuid;
+    const d = (a.aggregate && a.aggregate.byDiscipline) || {};
+    const c = k => (d[k] && d[k].total) || 0;
+    let x = g.get(key);
+    if (!x) g.set(key, x = {uuid: key, name: n >= 2 ? pt[n - 2] : a.areaName, region: n >= 3 ? pt[n - 3] : '',
+      lat: 0, lon: 0, w: 0, walls: 0, climbs: 0, sport: 0, trad: 0, boulder: 0, tr: 0, alpine: 0, snow: 0, ice: 0, mixed: 0});
+    const wt = Math.max(1, a.totalClimbs || 0);
+    x.lat += m.lat*wt; x.lon += m.lng*wt; x.w += wt; x.walls++; x.climbs += a.totalClimbs || 0;
+    x.sport += c('sport'); x.trad += c('trad'); x.boulder += c('bouldering'); x.tr += c('tr');
+    x.alpine += c('alpine'); x.snow += c('snow'); x.ice += c('ice'); x.mixed += c('mixed');
+  }
+  return [...g.values()].map(({w, ...x}) => ({...x, lat: +(x.lat/w).toFixed(5), lon: +(x.lon/w).toFixed(5)}));
+}
+const obKey = (origin, b) => `ww.ob.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
+async function getOpenBeta(origin, radiusKm){
+  const r = osmBucket(radiusKm);
+  for (const b of OSM_BUCKETS.filter(b => b >= r)){
+    try {
+      const c = JSON.parse(localStorage.getItem(obKey(origin, b)) || 'null');
+      if (c && Date.now() - c.at < 7*24*H) return {groups: c.groups, cached: true};
+    } catch {}
+  }
+  const j = await getJSON(OB_URL, {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({query: OB_QUERY, variables: {lat: origin.lat, lng: origin.lon, max: Math.round(r*1000)}})}, 30000);
+  if (!j.data || !j.data.cragsNear) throw new Error('OpenBeta: ' + ((j.errors && j.errors[0] && j.errors[0].message) || 'no data'));
+  const groups = groupOpenBeta(j.data.cragsNear.flatMap(b => b.crags || []));
+  try { localStorage.setItem(obKey(origin, r), JSON.stringify({at: Date.now(), groups})); } catch {}
+  return {groups, cached: false};
+}
+function getObCached(origin, radiusKm){
+  const r = osmBucket(radiusKm), o2 = `${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
+  for (const b of OSM_BUCKETS.filter(b => b > r)){ const p = cachedP(`ob|${o2}|${b}`, 60*MIN); if (p) return p; }
+  return memo(`ob|${o2}|${r}`, 60*MIN, () => getOpenBeta(origin, r));
+}
+// Rock crags only (snow/ice/alpine-only areas are skipped), at least 5 rock routes, not already
+// in the catalog. Ranked by size with a pull toward closer crags; the top 40 get weather.
+function obCandidates(groups, catalog, f, origin){
+  const cat = catalog.filter(c => c.type === 'climb');
+  const out = [];
+  for (const g of groups){
+    const rock = g.sport + g.trad + g.boulder + g.tr;
+    if (rock < 5) continue;
+    if (cat.some(c => E.haversineKm(c.lat, c.lon, g.lat, g.lon) < 1.2)) continue;
+    const styles = [];
+    if (g.sport || g.tr) styles.push('sport');
+    if (g.trad) styles.push('trad');
+    if (g.boulder) styles.push('boulder');
+    const it = E.prepare({id: `ob-${g.uuid}`, type: 'climb', source: 'openbeta', name: g.name, area: g.region,
+      lat: g.lat, lon: g.lon, rock: 'rock type unknown', wet: 'medium', aspects: ['mixed'], styles, approach: 15,
+      routes: {sport: g.sport, trad: g.trad, boulder: g.boulder, tr: g.tr, total: rock}, walls: g.walls,
+      obUrl: `https://openbeta.io/area/${g.uuid}`});
+    if (!keep(it, f)) continue;
+    it._km = E.haversineKm(origin.lat, origin.lon, g.lat, g.lon);
+    it._rank = rock/(1 + it._km/25);
+    out.push(it);
+  }
+  return out.sort((a, b) => b._rank - a._rank).slice(0, 40);
+}
+
 /* ---------- date / time ---------- */
 const pad = n => String(n).padStart(2, '0');
 function nowIn(tz){
@@ -1071,7 +1153,7 @@ function defaults(){
 }
 
 /* ---------- progress ---------- */
-const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', osm:'OpenStreetMap'};
+const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', ob:'OpenBeta', osm:'OpenStreetMap'};
 function steps(st){
   $('#steps').innerHTML = Object.entries(st).map(([k, v]) => `<li class="${v.s}">${esc(STEP_NAMES[k])}${v.note ? ': ' + esc(v.note) : ''}</li>`).join('');
 }
@@ -1081,12 +1163,12 @@ function readForm(){
   const v = id => $(id).value, c = id => $(id).checked;
   return {
     loc: v('#loc').trim(), date: v('#date'), t0: v('#t0'), t1: v('#t1'),
-    drive: +v('#drive'), d2d: c('#d2d'), osm: c('#osm'), tech: +v('#tech'),
+    drive: +v('#drive'), d2d: c('#d2d'), osm: c('#osm'), ob: c('#ob'), tech: +v('#tech'),
     acts: ['run', 'climb', 'ski'].filter(a => c('#a-' + a)),
     styles: ['sport', 'trad', 'multi', 'boulder'].filter(s => c('#s-' + s)),
   };
 }
-function saveForm(f){ store.set({loc: f.loc, origin: state.picked, drive: f.drive, d2d: f.d2d, osm: f.osm, tech: f.tech, acts: f.acts, styles: f.styles}); }
+function saveForm(f){ store.set({loc: f.loc, origin: state.picked, drive: f.drive, d2d: f.d2d, osm: f.osm, ob: f.ob, tech: f.tech, acts: f.acts, styles: f.styles}); }
 function loadForm(){
   const p = store.get();
   if (p.loc){
@@ -1097,6 +1179,7 @@ function loadForm(){
   if (p.drive) $('#drive').value = p.drive;
   if (typeof p.d2d === 'boolean') $('#d2d').checked = p.d2d;
   if (typeof p.osm === 'boolean') $('#osm').checked = p.osm;
+  if (typeof p.ob === 'boolean') $('#ob').checked = p.ob;
   if (p.tech) $('#tech').value = p.tech;
   if (Array.isArray(p.acts)) ['run', 'climb', 'ski'].forEach(a => $('#a-' + a).checked = p.acts.includes(a));
   if (Array.isArray(p.styles)) ['sport', 'trad', 'multi', 'boulder'].forEach(s => $('#s-' + s).checked = p.styles.includes(s));
@@ -1122,6 +1205,7 @@ async function run(){
   const my = ++state.req;
   const live = () => my === state.req;
   const st = {loc:{s:'run'}, drive:{s:''}, wx:{s:''}, avy:{s:''}};
+  if (f.ob && f.acts.includes('climb')) st.ob = {s:''};
   if (f.osm) st.osm = {s:''};
   steps(st);
   try {
@@ -1145,49 +1229,58 @@ async function run(){
     if (daysOut > 14) throw new Error('Forecasts only reach about two weeks out.');
 
     const avyP = getAvy().then(d => ({ok:true, d}), e => ({ok:false, e}));
-    const osmRadius = Math.min(f.drive*1.1, 170);
-    const osmP = f.osm ? getOsmCached(origin, osmRadius).then(d => ({ok:true, d}), e => ({ok:false, e})) : null;
-    if (f.osm){
-      st.osm = {s:'run', base:'searching'};
+    const xRadius = Math.min(f.drive*1.1, 170);
+    const wrap = p => p.then(d => ({ok:true, d}), e => ({ok:false, e}));
+    const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
+    // Optional extra sources. Each loads in parallel and merges into the results when ready;
+    // a failure only marks its own step and never replaces the results already on screen.
+    const extras = [];
+    if (f.ob && f.acts.includes('climb')) extras.push({key: 'ob', p: wrap(getObCached(origin, xRadius)),
+      items: d => obCandidates(d.groups, catalog, f, origin)});
+    if (f.osm) extras.push({key: 'osm', p: wrap(getOsmCached(origin, xRadius)),
+      items: d => osmCandidates(d.elements, catalog, f, origin)});
+    if (extras.length){
       const t0 = Date.now();
+      extras.forEach(x => st[x.key] = {s:'run', base:'searching'});
       const tick = setInterval(() => {
-        if (!live() || !st.osm || st.osm.s !== 'run') return clearInterval(tick);
-        const via = st.osm.base === 'searching' && state.osmServer ? ` ${state.osmServer}` : '';
-        st.osm.note = `${st.osm.base}${via} ${Math.round((Date.now() - t0)/1000)}s`; steps(st);
+        const running = extras.filter(x => st[x.key] && st[x.key].s === 'run');
+        if (!live() || !running.length) return clearInterval(tick);
+        running.forEach(x => {
+          const via = x.key === 'osm' && st.osm.base === 'searching' && state.osmServer ? ` ${state.osmServer}` : '';
+          st[x.key].note = `${st[x.key].base}${via} ${Math.round((Date.now() - t0)/1000)}s`;
+        });
+        steps(st);
       }, 1000);
     }
     st.avy = {s:'run'}; st.drive = {s:'run'}; steps(st);
 
     const ctxBase = {origin, tz, f, S: S2, E: Eend, d0, home, clipped};
-    const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
     const results = await scoreItems(catalog, ctxBase, avyP, st, live, true);
     if (!live()) return;
-    state.last = {ctx: ctxBase, results, osmCount: 0};
+    state.last = {ctx: ctxBase, results};
     render(state.last);
     state.shown = {key: formKey(f), label: origin.label};
     updatePending();
 
-    if (osmP){
-      // Optional extras: a failure here never replaces the results already on screen.
+    await Promise.all(extras.map(async x => {
       try {
-        const o = await osmP;
+        const o = await x.p;
         if (!live()) return;
-        if (!o.ok){ st.osm = {s:'fail', note: (o.e.message || 'unavailable') + '. Results above are complete'}; steps(st); return; }
-        const picked = osmCandidates(o.d.elements, catalog, f, origin);
+        if (!o.ok){ st[x.key] = {s:'fail', note: (o.e.message || 'unavailable') + '. Results above are complete'}; steps(st); return; }
+        const picked = x.items(o.d);
         const cached = o.d.cached ? ', cached' : '';
-        if (!picked.length){ st.osm = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
-        st.osm.base = `${picked.length} finds, checking weather`; steps(st);
+        if (!picked.length){ st[x.key] = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
+        st[x.key].base = `${picked.length} finds, checking weather`; steps(st);
         const more = await scoreItems(picked, ctxBase, avyP, null, live, false);
         if (!live()) return;
-        state.last.results = results.concat(more);
-        state.last.osmCount = more.length;
-        st.osm = {s:'ok', note:`${more.length} added${cached}`}; steps(st);
+        state.last.results = state.last.results.concat(more);
+        st[x.key] = {s:'ok', note:`${more.length} added${cached}`}; steps(st);
         render(state.last);
       } catch (e){
         if (!live()) return;
-        st.osm = {s:'fail', note:'unavailable; results above are complete'}; steps(st);
+        st[x.key] = {s:'fail', note:'unavailable; results above are complete'}; steps(st);
       }
-    }
+    }));
   } catch (e){
     if (!live()) return;
     for (const k in st) if (st[k].s === 'run') st[k] = {s:'fail'};
@@ -1222,17 +1315,21 @@ async function prefetch(){
     const tz = home.tz || 'auto';
     getAvy().catch(() => {});
     const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
-    const osmP = f.osm ? getOsmCached(origin, Math.min(f.drive*1.1, 170)).catch(() => null) : null;
+    const xRadius = Math.min(f.drive*1.1, 170);
+    const osmP = f.osm ? getOsmCached(origin, xRadius).catch(() => null) : null;
+    const obP = f.ob && f.acts.includes('climb') ? getObCached(origin, xRadius).catch(() => null) : null;
     await warm(catalog, origin, f, tz, d0, true);
     if (live()) setPf('ready');
-    const o = osmP && await osmP;
-    if (o && live()) await warm(osmCandidates(o.elements, catalog, f, origin), origin, f, tz, d0, false);
+    await Promise.all([
+      obP && obP.then(o => o && live() && warm(obCandidates(o.groups, catalog, f, origin), origin, f, tz, d0, false)),
+      osmP && osmP.then(o => o && live() && warm(osmCandidates(o.elements, catalog, f, origin), origin, f, tz, d0, false)),
+    ]);
   } catch {
     if (live()) setPf('');
   }
 }
 function setPf(s){ pf.status = s; updatePending(); }
-const formKey = f => JSON.stringify([f.loc, f.date, f.t0, f.t1, f.drive, f.d2d, f.osm, f.tech, f.acts, f.styles]);
+const formKey = f => JSON.stringify([f.loc, f.date, f.t0, f.t1, f.drive, f.d2d, f.osm, f.ob, f.tech, f.acts, f.styles]);
 function updatePending(){
   const el = $('#pending');
   const f = readForm();
@@ -1310,10 +1407,18 @@ function facts(r){
     if (it.highElev) out.push(`<span><span class="k">High</span> <span class="num">${n0(it.highElev)}</span> ft</span>`);
     if (it.tech) out.push(`<span>${TECH[it.tech]}</span>`);
   } else if (it.type === 'climb'){
-    out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
-    out.push(`<span>${esc(cap(it.rock || ''))}</span>`);
-    out.push(`<span>${esc((it.styles || []).map(s => s === 'multi' ? 'multipitch' : s).join(', '))}</span>`);
-    out.push(`<span><span class="k">Approach</span> <span class="num">${it.approach}</span> min</span>`);
+    if (it.source === 'openbeta'){
+      const r = it.routes, parts = [];
+      if (r.sport) parts.push(`${r.sport} sport`); if (r.trad) parts.push(`${r.trad} trad`);
+      if (r.tr) parts.push(`${r.tr} TR`); if (r.boulder) parts.push(`${r.boulder} boulder`);
+      out.push(`<span class="aspect">${rose(it.aspects)}Aspect unknown</span>`);
+      out.push(`<span><span class="num">${n0(r.total)}</span> routes: ${esc(parts.join(', '))}</span>`);
+    } else {
+      out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
+      out.push(`<span>${esc(cap(it.rock || ''))}</span>`);
+      out.push(`<span>${esc((it.styles || []).map(s => s === 'multi' ? 'multipitch' : s).join(', '))}</span>`);
+      out.push(`<span><span class="k">Approach</span> <span class="num">${it.approach}</span> min</span>`);
+    }
   } else {
     out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
     if (it.top) out.push(`<span><span class="num">${n0(it.top)}</span>→<span class="num">${n0(it.bottom)}</span> ft</span>`);
@@ -1340,7 +1445,10 @@ function wxLine(r){
   const s = r.summary; if (!s) return '';
   const parts = [];
   parts.push(`<span class="num">${Math.round(s.tMin)}${Math.round(s.tMax) !== Math.round(s.tMin) ? '–' + Math.round(s.tMax) : ''}°F</span> air`);
-  if (r.item.type === 'climb') parts.push(`rock ~<span class="num">${Math.round(s.rockMin)}–${Math.round(s.rockMax)}°F</span>`);
+  if (r.item.type === 'climb'){
+    const a = Math.round(s.rockMin), b = Math.round(s.rockMax);
+    parts.push(`rock ~<span class="num">${a === b ? a : a + '–' + b}°F</span>`);
+  }
   parts.push(`gusts <span class="num">${Math.round(s.gMax)}</span> mph`);
   parts.push(s.pSum > 0.005 ? `<span class="num">${s.pSum.toFixed(2)}</span> in precip` : (s.ppMax >= 20 ? `dry, <span class="num">${s.ppMax}%</span> chance` : 'dry'));
   return `<p class="wx">${parts.join(' · ')}</p>`;
@@ -1361,7 +1469,8 @@ function links(r){
   if (r.zone && r.zone.link && /^https:\/\//.test(r.zone.link)) out.push(`<a href="${esc(r.zone.link)}" target="_blank" rel="noopener">${esc(r.zone.centerId || 'Avalanche')} forecast</a>`);
   if (it.src) out.push(`<a href="${esc(it.src)}" target="_blank" rel="noopener">Route info</a>`);
   if (it.osmUrl) out.push(`<a href="${esc(it.osmUrl)}" target="_blank" rel="noopener">OpenStreetMap</a>`);
-  if (it.type === 'climb' && it.source === 'catalog') out.push(`<a href="https://www.mountainproject.com/search?q=${encodeURIComponent(it.name.split(':').pop().trim())}" target="_blank" rel="noopener">Mountain Project</a>`);
+  if (it.obUrl) out.push(`<a href="${esc(it.obUrl)}" target="_blank" rel="noopener">OpenBeta</a>`);
+  if (it.type === 'climb' && it.source !== 'osm') out.push(`<a href="https://www.mountainproject.com/search?q=${encodeURIComponent(it.name.split(':').pop().trim())}" target="_blank" rel="noopener">Mountain Project</a>`);
   return `<div class="links">${out.join('')}</div>`;
 }
 
@@ -1371,7 +1480,7 @@ function card(r){
   return `<article class="card v${r.verdict}">
     <div class="card-h"><div>
       <h3>${esc(it.name)}</h3>
-      <p class="meta">${esc(it.area || '')}${it.area ? ' · ' : ''}<span class="drv">${E.fmtDur(r.drive.min)}</span> drive${r.drive.est ? ' (est.)' : ''}${it.source === 'osm' ? ' · <span class="tag">OSM</span>' : ''}</p>
+      <p class="meta">${esc(it.area || '')}${it.area ? ' · ' : ''}<span class="drv">${E.fmtDur(r.drive.min)}</span> drive${r.drive.est ? ' (est.)' : ''}${SOURCE_TAG[it.source] ? ` · <span class="tag">${SOURCE_TAG[it.source]}</span>` : ''}</p>
     </div><span class="pill l${r.verdict}">${VERDICT[r.verdict]}</span></div>
     <div class="facts">${facts(r)}</div>
     ${strip(r)}
@@ -1411,7 +1520,10 @@ function render(state){
   const f = ctx.f;
   const byAct = {};
   f.acts.forEach(a => byAct[a] = []);
-  results.forEach(r => (byAct[r.item.type] ||= []).push(r));
+  const obClimbs = results.filter(r => r.item.source === 'openbeta');
+  results.filter(r => !(r.item.source === 'osm' && r.item.type === 'climb' &&
+      obClimbs.some(o => E.haversineKm(o.item.lat, o.item.lon, r.item.lat, r.item.lon) < 1)))
+    .forEach(r => (byAct[r.item.type] ||= []).push(r));
   for (const a in byAct) byAct[a].sort((x, y) => x.verdict - y.verdict || y.comfort - x.comfort || x.drive.min - y.drive.min);
 
   const jump = f.acts.map(a => {
@@ -1477,6 +1589,7 @@ function syncLabels(){
     d2d ? 'door to door' : 'times on site',
     $('#tech').selectedOptions[0].textContent.toLowerCase(),
     styles === 4 ? 'all climbing styles' : `${styles} climbing style${styles === 1 ? '' : 's'}`,
+    $('#ob').checked ? 'OpenBeta on' : 'OpenBeta off',
     $('#osm').checked ? 'OSM on' : 'OSM off',
   ].join(' · ');
 }
