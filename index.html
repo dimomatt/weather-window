@@ -938,14 +938,37 @@ async function getAvy(){
   return j;
 }
 
+// OpenStreetMap finds via Overpass. A bounding box is far cheaper for Overpass than a
+// radius search; distance is filtered afterwards anyway. Results are cached for a week
+// per area, since trail and crag data barely changes.
+const OSM_TAGS = /^(name|route|network|distance|sac_scale|climbing.*|indoor|leisure|piste:type)$/;
 async function getOsm(origin, radiusKm){
-  const a = `(around:${Math.round(radiusKm*1000)},${origin.lat.toFixed(4)},${origin.lon.toFixed(4)})`;
-  const q = `[out:json][timeout:25];(relation["route"~"^(hiking|foot|running)$"]["name"]${a};nwr["climbing"~"^(crag|area|boulder)$"]["name"]${a};nwr["piste:type"~"^(skitour|backcountry)$"]["name"]${a};);out tags center 600;`;
-  let last;
-  for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']){
-    try { return await getJSON(ep, {method:'POST', body: new URLSearchParams({data: q})}, 30000); } catch (e){ last = e; }
-  }
-  throw last;
+  const r = Math.ceil(radiusKm/20)*20;
+  const key = `ww.osm.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${r}`;
+  try {
+    const c = JSON.parse(localStorage.getItem(key) || 'null');
+    if (c && Date.now() - c.at < 7*24*H) return {elements: c.elements, cached: true};
+  } catch {}
+  const dLat = r/111.32, dLon = r/(111.32*Math.cos(origin.lat*Math.PI/180));
+  const bb = [origin.lat - dLat, origin.lon - dLon, origin.lat + dLat, origin.lon + dLon].map(v => v.toFixed(4)).join(',');
+  const q = `[out:json][timeout:20][bbox:${bb}];(relation["route"~"^(hiking|foot|running)$"]["name"];nwr["climbing"~"^(crag|area|boulder)$"]["name"];nwr["piste:type"~"^(skitour|backcountry)$"]["name"];);out tags center 600;`;
+  // Ask the main server first; if it hasn't answered in 6 s, ask a mirror too and take whichever wins.
+  const eps = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  const ctls = eps.map(() => new AbortController());
+  let done = false;
+  const attempt = (i, delay) => new Promise((res, rej) => setTimeout(() => {
+    if (done) return rej(new Error('skipped'));
+    getJSON(eps[i], {method:'POST', body: new URLSearchParams({data: q}), signal: ctls[i].signal}, 22000)
+      .then(d => d.remark && /error|timed out/i.test(d.remark) ? rej(new Error('Overpass: ' + d.remark)) : res(d), rej);
+  }, delay));
+  let data;
+  try { data = await Promise.any([attempt(0, 0), attempt(1, 6000)]); }
+  catch (agg){ throw (agg.errors || []).find(e => e && e.message !== 'skipped' && !e.aborted) || new Error('no answer'); }
+  finally { done = true; ctls.forEach(c => c.abort()); }
+  const elements = (data.elements || []).map(e => ({type: e.type, id: e.id, lat: e.lat, lon: e.lon, center: e.center,
+    tags: Object.fromEntries(Object.entries(e.tags || {}).filter(([k]) => OSM_TAGS.test(k)))}));
+  try { localStorage.setItem(key, JSON.stringify({at: Date.now(), elements})); } catch {}
+  return {elements, cached: false};
 }
 
 /* ---------- date / time ---------- */
@@ -1054,7 +1077,14 @@ async function run(){
     const avyP = getAvy().then(d => ({ok:true, d}), e => ({ok:false, e}));
     const osmRadius = Math.min(f.drive*1.1, 170);
     const osmP = f.osm ? getOsm(origin, osmRadius).then(d => ({ok:true, d}), e => ({ok:false, e})) : null;
-    if (f.osm){ st.osm = {s:'run'}; }
+    if (f.osm){
+      st.osm = {s:'run', base:'searching'};
+      const t0 = Date.now();
+      const tick = setInterval(() => {
+        if (!live() || !st.osm || st.osm.s !== 'run') return clearInterval(tick);
+        st.osm.note = `${st.osm.base} ${Math.round((Date.now() - t0)/1000)}s`; steps(st);
+      }, 1000);
+    }
     st.avy = {s:'run'}; st.drive = {s:'run'}; steps(st);
 
     const ctxBase = {origin, tz, f, S: S2, E: Eend, d0, home, clipped};
@@ -1065,22 +1095,29 @@ async function run(){
     render(state.last);
 
     if (osmP){
-      const o = await osmP;
-      if (!live()) return;
-      if (!o.ok){ st.osm = {s:'fail', note: 'unavailable (' + (o.e.message || 'error') + ')'}; steps(st); return; }
-      const extra = E.osmToItems(o.d.elements, catalog).map(E.prepare).filter(it => keep(it, f));
-      // Keep the nearest few per activity so the extra calls stay light.
-      const byType = {};
-      extra.forEach(it => { it._km = E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon); (byType[it.type] ||= []).push(it); });
-      const picked = Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
-      if (!picked.length){ st.osm = {s:'ok', note:'nothing new nearby'}; steps(st); return; }
-      st.osm = {s:'run', note:`${picked.length} finds`}; steps(st);
-      const more = await scoreItems(picked, ctxBase, avyP, null, live, false);
-      if (!live()) return;
-      state.last.results = results.concat(more);
-      state.last.osmCount = more.length;
-      st.osm = {s:'ok', note:`${more.length} added`}; steps(st);
-      render(state.last);
+      // Optional extras: a failure here never replaces the results already on screen.
+      try {
+        const o = await osmP;
+        if (!live()) return;
+        if (!o.ok){ st.osm = {s:'fail', note: 'unavailable (' + (o.e.message || 'error') + '); results above are complete'}; steps(st); return; }
+        const extra = E.osmToItems(o.d.elements, catalog).map(E.prepare).filter(it => keep(it, f));
+        // Keep the nearest few per activity so the extra calls stay light.
+        const byType = {};
+        extra.forEach(it => { it._km = E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon); (byType[it.type] ||= []).push(it); });
+        const picked = Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
+        const cached = o.d.cached ? ', cached' : '';
+        if (!picked.length){ st.osm = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
+        st.osm.base = `${picked.length} finds, checking weather`; steps(st);
+        const more = await scoreItems(picked, ctxBase, avyP, null, live, false);
+        if (!live()) return;
+        state.last.results = results.concat(more);
+        state.last.osmCount = more.length;
+        st.osm = {s:'ok', note:`${more.length} added${cached}`}; steps(st);
+        render(state.last);
+      } catch (e){
+        if (!live()) return;
+        st.osm = {s:'fail', note:'unavailable; results above are complete'}; steps(st);
+      }
     }
   } catch (e){
     if (!live()) return;
