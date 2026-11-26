@@ -1,0 +1,1410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Weather Window</title>
+<meta name="description" content="Trail runs, rock climbs and ski lines that fit today's weather and avalanche forecast, within your drive time.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: topo-contour masthead, one query panel, a conditions band, then one stacked section per activity. */
+:root{
+  --bg:#edf0f0; --surface:#ffffff; --surface-2:#f4f6f6; --ink:#16202a; --muted:#56646e; --line:#d3d9dc;
+  --accent:#2446c7; --accent-ink:#ffffff; --accent-soft:#e5eaff;
+  --contour:rgba(150,104,66,.40);
+  --go:#1b7a44; --go-bg:#e2f3e8; --caution:#8f5a00; --caution-bg:#fff1d2; --nogo:#b3302a; --nogo-bg:#fde5e2;
+  --cell-go:#3aa86a; --cell-caution:#e6a637; --cell-nogo:#d4503f; --cell-off:#d9dee1;
+  --d1:#50b848; --d2:#fff200; --d3:#f7941e; --d4:#ed1c24; --d5:#231f20; --d-ink:#16202a; --d-ink-hi:#ffffff;
+  --font-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1317; --surface:#151d23; --surface-2:#1a242b; --ink:#e3e9ec; --muted:#93a1ab; --line:#27333b;
+    --accent:#8ea4ff; --accent-ink:#0b1020; --accent-soft:#1c2549;
+    --contour:rgba(184,140,104,.33);
+    --go:#62d293; --go-bg:#11301e; --caution:#f1b955; --caution-bg:#33270e; --nogo:#ff8a7c; --nogo-bg:#3b1613;
+    --cell-go:#3d9c66; --cell-caution:#cf9734; --cell-nogo:#c9503f; --cell-off:#29343c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1317; --surface:#151d23; --surface-2:#1a242b; --ink:#e3e9ec; --muted:#93a1ab; --line:#27333b;
+  --accent:#8ea4ff; --accent-ink:#0b1020; --accent-soft:#1c2549;
+  --contour:rgba(184,140,104,.33);
+  --go:#62d293; --go-bg:#11301e; --caution:#f1b955; --caution-bg:#33270e; --nogo:#ff8a7c; --nogo-bg:#3b1613;
+  --cell-go:#3d9c66; --cell-caution:#cf9734; --cell-nogo:#c9503f; --cell-off:#29343c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.wrap{max-width:780px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* Masthead */
+.mast{position:relative;overflow:hidden;border-bottom:1px solid var(--line);background:var(--surface)}
+.mast canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.mast .wrap{position:relative;padding-block:calc(env(safe-area-inset-top,0px) + 28px) 22px}
+.mast h1{font:700 clamp(2.4rem,9vw,3.6rem)/.9 var(--font-display);letter-spacing:.01em;text-transform:uppercase;margin:0}
+.mast h1 span{color:var(--accent)}
+.mast p{margin:.6rem 0 0;color:var(--muted);max-width:36ch;text-wrap:balance}
+
+/* Query panel */
+form.q{margin-top:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;display:grid;gap:14px}
+.field{display:grid;gap:5px;min-width:0}
+label,.lbl{font:600 .78rem/1.2 var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+input[type=text],input[type=date],input[type=time],select{font:500 1rem var(--font-body);color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px 11px;width:100%;min-width:0}
+.row{display:flex;gap:8px;align-items:stretch}
+.combo{position:relative;flex:1;min-width:0}
+.combo ul{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(10,20,30,.16);max-height:min(340px,55vh);overflow:auto}
+.combo li{display:grid;gap:1px;padding:8px 10px;border-radius:6px;cursor:pointer}
+.combo li[aria-selected="true"]{background:var(--accent-soft)}
+.combo li .nm{font-weight:600}
+.combo li .sub{font-size:.85rem;color:var(--muted)}
+.combo li .kind{font:600 .68rem/1 var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:2px 4px;margin-left:6px;vertical-align:2px}
+.combo li.msg{cursor:default;color:var(--muted);font-size:.92rem}
+@media (max-width:420px){.row{flex-wrap:wrap}.row .ghost{flex:1 1 100%}}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:420px){.grid3{grid-template-columns:1fr 1fr}.grid3 .field:first-child{grid-column:1/-1}}
+button{font:600 1rem var(--font-body);border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);padding:10px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font:700 1.15rem var(--font-display);letter-spacing:.06em;text-transform:uppercase;padding:12px}
+button:disabled{opacity:.6;cursor:progress}
+.ghost{white-space:nowrap}
+.range-h{display:flex;justify-content:space-between;align-items:baseline}
+.range-h output{font:500 .95rem var(--font-mono);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.check{display:flex;gap:9px;align-items:flex-start;font:500 .95rem/1.35 var(--font-body);text-transform:none;letter-spacing:0;color:var(--ink)}
+.check input{margin-top:3px;accent-color:var(--accent);width:18px;height:18px;flex:none}
+fieldset{border:0;margin:0;padding:0;display:grid;gap:6px;min-width:0}
+legend{padding:0;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{position:relative}
+.chip input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.chip span{display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);font:500 .92rem var(--font-body);color:var(--muted);text-transform:none;letter-spacing:0}
+.chip input:checked+span{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.chip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+details.more > summary{cursor:pointer;font:600 .78rem/1.2 var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+details.more > summary span{font:400 .88rem var(--font-body);text-transform:none;letter-spacing:0;margin-left:6px}
+details.more[open] > summary{margin-bottom:12px}
+.more-body{display:grid;gap:14px}
+.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:520px){.filters{grid-template-columns:1fr}}
+.hint{font-size:.88rem;color:var(--muted);margin:0}
+.err{color:var(--nogo);font-weight:600;margin:0}
+
+/* Progress */
+.steps{display:flex;flex-wrap:wrap;gap:6px 14px;margin:14px 0 0;padding:0;list-style:none;font:500 .85rem var(--font-body);color:var(--muted)}
+.steps li::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--cell-off);vertical-align:1px}
+.steps li.run::before{background:var(--accent);animation:pulse 1s infinite alternate}
+.steps li.ok::before{background:var(--cell-go)}
+.steps li.warn::before{background:var(--cell-caution)}
+.steps li.fail::before{background:var(--cell-nogo)}
+@keyframes pulse{from{opacity:.35}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.steps li.run::before{animation:none}}
+
+/* Conditions band */
+.band{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.band{grid-template-columns:1fr}}
+.band > div{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;min-width:0}
+.band h2{font:700 .85rem/1 var(--font-display);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.band p{margin:0}
+.zones{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.zones li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.jump{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0}
+.jump a{font:600 .9rem var(--font-body);text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+.jump a b{font-family:var(--font-mono);font-weight:500;color:var(--go)}
+
+/* Activity sections */
+section.act{margin-top:28px}
+section.act > h2{font:700 1.7rem/1 var(--font-display);text-transform:uppercase;letter-spacing:.02em;margin:0 0 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+section.act > h2 small{font:500 .9rem var(--font-body);text-transform:none;letter-spacing:0;color:var(--muted)}
+.list{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-top:12px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--radius);padding:14px;color:var(--muted);margin-top:12px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}
+.card > *{min-width:0}
+.note{margin:0;font-size:.9rem;color:var(--muted)}
+.card.v1{border-left:4px solid var(--cell-caution)}
+.card.v0{border-left:4px solid var(--cell-go)}
+.card-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.card-h > div{min-width:0}
+.card h3{font:600 1.12rem/1.25 var(--font-body);margin:0;text-wrap:balance}
+.meta{margin:2px 0 0;color:var(--muted);font-size:.92rem}
+.meta .drv{font-family:var(--font-mono);font-size:.85rem;color:var(--ink)}
+.tag{font:600 .7rem/1 var(--font-display);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);border-radius:4px;padding:3px 5px;color:var(--muted);vertical-align:2px}
+.pill{flex:none;font:700 .9rem/1 var(--font-display);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:6px}
+.pill.l0{background:var(--go-bg);color:var(--go)}
+.pill.l1{background:var(--caution-bg);color:var(--caution)}
+.pill.l2{background:var(--nogo-bg);color:var(--nogo)}
+.facts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:.92rem}
+.facts .k{color:var(--muted)}
+.facts .num{font-family:var(--font-mono);font-size:.86rem}
+.rose{flex:none;display:block}
+.rose path{fill:var(--cell-off);stroke:var(--surface);stroke-width:.8}
+.rose path.on{fill:var(--accent)}
+.rose path.mixed{fill:var(--accent);opacity:.45}
+.rose .n{fill:var(--muted);font:600 6px var(--font-body)}
+.aspect{display:flex;align-items:center;gap:6px}
+.danger{display:inline-flex;align-items:center;gap:6px;font-size:.92rem}
+.danger b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:4px;font:700 .85rem var(--font-mono);color:var(--d-ink);border:1px solid rgba(0,0,0,.15)}
+.danger.d1 b{background:var(--d1)}.danger.d2 b{background:var(--d2)}.danger.d3 b{background:var(--d3)}
+.danger.d4 b{background:var(--d4);color:var(--d-ink-hi)}.danger.d5 b{background:var(--d5);color:var(--d-ink-hi);border-color:#888}
+.danger.d0 b{background:var(--cell-off);color:var(--muted)}
+
+.strip-wrap{display:grid;gap:3px}
+.strip{display:flex;gap:2px;height:16px;position:relative}
+.strip i{flex:1;border-radius:2px;background:var(--cell-off);position:relative}
+.strip i.l0{background:var(--cell-go)}.strip i.l1{background:var(--cell-caution)}.strip i.l2{background:var(--cell-nogo)}
+.strip i.best::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:2px;background:var(--ink);border-radius:1px}
+.strip-l{display:flex;justify-content:space-between;font:400 .74rem var(--font-mono);color:var(--muted);margin-top:4px}
+.strip-l .b{color:var(--ink);font-weight:500}
+.wx{margin:0;font-size:.92rem}
+.wx .num{font-family:var(--font-mono);font-size:.86rem}
+.flags{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:.92rem}
+.flags li{display:flex;gap:8px;align-items:baseline}
+.flags li::before{content:"";flex:none;width:8px;height:8px;border-radius:2px;transform:translateY(-1px)}
+.flags li.l2::before{background:var(--cell-nogo)}
+.flags li.l1::before{background:var(--cell-caution)}
+.flags li.l0::before{background:var(--cell-off)}
+.flags li.lp::before{background:var(--accent);border-radius:50%}
+.links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem}
+.links a{text-decoration:none;font-weight:600}
+details.hourly summary,details.ruled summary{cursor:pointer;font:600 .9rem var(--font-body);color:var(--muted)}
+.tbl{overflow-x:auto;margin-top:6px}
+.tbl table{border-collapse:collapse;font:400 .8rem var(--font-mono);width:100%;min-width:420px}
+.tbl th{font:600 .7rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+details.ruled{margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
+details.ruled ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:.92rem}
+details.ruled li b{font-weight:600}
+details.ruled li span{color:var(--muted)}
+
+footer{margin:40px 0 32px;color:var(--muted);font-size:.85rem;display:grid;gap:8px}
+footer p{margin:0;max-width:70ch}
+</style>
+</head>
+<body>
+<header class="mast">
+  <canvas id="topo" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <h1>Weather <span>Window</span></h1>
+    <p>Trail runs, rock climbs and ski lines that fit the forecast, the avalanche danger and your drive.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <form class="q" id="q" novalidate>
+    <div class="field">
+      <label for="loc">Start from</label>
+      <div class="row">
+        <div class="combo">
+          <input type="text" id="loc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="locList" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Town, trailhead, or lat, lon" value="Golden, CO">
+          <ul id="locList" role="listbox" aria-label="Matching places" hidden></ul>
+        </div>
+        <button type="button" class="ghost" id="geo">Use my location</button>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label for="date">Date</label><input type="date" id="date"></div>
+      <div class="field"><label for="t0" id="t0l">Leave</label><input type="time" id="t0" step="900"></div>
+      <div class="field"><label for="t1" id="t1l">Back by</label><input type="time" id="t1" step="900"></div>
+    </div>
+    <div class="field">
+      <div class="range-h"><label for="drive">Max drive, one way</label><output id="driveOut" for="drive">1h 15m</output></div>
+      <input type="range" id="drive" min="15" max="240" step="15" value="75">
+    </div>
+    <fieldset>
+      <legend class="lbl">Activities</legend>
+      <div class="chips">
+        <label class="chip"><input type="checkbox" id="a-run" checked><span>Trail runs</span></label>
+        <label class="chip"><input type="checkbox" id="a-climb" checked><span>Climbs</span></label>
+        <label class="chip"><input type="checkbox" id="a-ski" checked><span>Ski lines</span></label>
+      </div>
+    </fieldset>
+    <details class="more" id="more">
+    <summary>Options <span id="moreSum"></span></summary>
+    <div class="more-body">
+    <label class="check"><input type="checkbox" id="d2d" checked> <span>Door to door: the drive counts inside the window</span></label>
+    <div class="filters">
+      <div class="field">
+        <label for="tech">Trail terrain</label>
+        <select id="tech">
+          <option value="3">Any terrain</option>
+          <option value="2">Smooth to moderate</option>
+          <option value="1">Smooth only</option>
+        </select>
+      </div>
+      <fieldset>
+        <legend class="lbl">Climbing styles</legend>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" id="s-sport" checked><span>Sport</span></label>
+          <label class="chip"><input type="checkbox" id="s-trad" checked><span>Trad</span></label>
+          <label class="chip"><input type="checkbox" id="s-multi" checked><span>Multipitch</span></label>
+          <label class="chip"><input type="checkbox" id="s-boulder" checked><span>Boulder</span></label>
+        </div>
+      </fieldset>
+    </div>
+    <label class="check"><input type="checkbox" id="osm" checked> <span>Add OpenStreetMap trails, crags and ski routes (works outside Colorado; fewer details)</span></label>
+    </div>
+    </details>
+    <p class="err" id="err" hidden></p>
+    <button type="submit" class="primary" id="go">Find options</button>
+  </form>
+
+  <ul class="steps" id="steps" aria-live="polite"></ul>
+  <div id="out"></div>
+
+  <footer>
+    <p>A planning filter, not a forecast. Read the full avalanche forecast and check road and trail status before you go.</p>
+    <p>Ski ratings combine each zone's headline (highest) avalanche danger with the line's terrain class (ATES) in a conservative matrix. Catalog distances, gains and elevations are approximate; ski-line aspects and elevations follow Front Range Ski Mountaineering and Powder Project route pages. Modeled snow depth comes from a weather model grid and can miss local wind-scour or drifts.</p>
+    <p>Weather data by <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Avalanche danger from <a href="https://avalanche.org/">avalanche.org</a> and member centers. Routing by <a href="https://project-osrm.org/">OSRM</a>. Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p>
+  </footer>
+</main>
+
+<script id="engine">
+/* ==========================================================================
+   ENGINE: catalog + scoring. Pure functions, no DOM. Edit CATALOG to add places.
+   Units: feet, miles, °F, mph, inches. Times are "naive" ms: local wall-clock
+   time of the origin's time zone, stored as if it were UTC.
+   ========================================================================== */
+const Engine = (() => {
+'use strict';
+
+const ASPECTS = ['N','NE','E','SE','S','SW','W','NW'];
+const SOLAR = new Set(['E','SE','S','SW','W']);
+const DANGER = {1:'Low',2:'Moderate',3:'Considerable',4:'High',5:'Extreme'};
+const HEAVY = new Set([65,67,75,82,86]);
+const FREEZING = new Set([56,57,66,67]);
+const H = 3600000;
+
+/* ---------------- Catalog ----------------
+   run:   lat/lon = trailhead. thElev/highElev ft, miles, gain ft, tech 1 smooth · 2 moderate · 3 technical,
+          exposure foothills|forest|alpine, winterAvy = route crosses avalanche paths in winter.
+   climb: lat/lon = crag; th = [lat,lon] parking if different. rock, wet = how much rain/snow hurts it
+          (high: soft sandstone, medium: hard sandstone/conglomerate, low: granite/gneiss/basalt/limestone),
+          aspects (or ['mixed']), styles, approach minutes, seasonal = {months, note}.
+   ski:   lat/lon = trailhead/parking, line = [lat,lon] of the terrain. thElev, top, bottom ft,
+          aspects, ates simple|challenging|complex, approachMi one way, src = route info page. */
+const CATALOG = [
+  // ---------- Trail runs ----------
+  {id:'r-falcon', type:'run', name:"Mount Falcon: Castle Trail to Walker's Dream", area:'Morrison', lat:39.6372, lon:-105.1962, thElev:5800, highElev:7750, miles:8.0, gain:2000, tech:2, exposure:'foothills', note:'Steady rocky climb from the east trailhead; rolling on top.'},
+  {id:'r-redrocks', type:'run', name:'Red Rocks Trail & Morrison Slide', area:'Matthews/Winters Park', lat:39.6900, lon:-105.2045, thElev:6250, highElev:6900, miles:6.4, gain:1100, tech:2, exposure:'foothills', note:'Sunny and quick to dry.'},
+  {id:'r-apex', type:'run', name:"Apex Park: Apex, Pick 'N Sledge & Enchanted Forest", area:'Golden', lat:39.7168, lon:-105.2069, thElev:6200, highElev:7400, miles:6.5, gain:1500, tech:2, exposure:'foothills'},
+  {id:'r-greenmtn', type:'run', name:'Green Mountain loop (Hayden Park)', area:'Lakewood', lat:39.6993, lon:-105.1845, thElev:6200, highElev:6850, miles:6.4, gain:1000, tech:1, exposure:'foothills', note:'Open grassland, no shade, catches wind.'},
+  {id:'r-lair', type:'run', name:"Lair o' the Bear: Bear Creek Trail & Castor Cutoff", area:'Idledale', lat:39.6658, lon:-105.2580, thElev:6560, highElev:7100, miles:4.5, gain:600, tech:1, exposure:'forest', note:'Creekside and shaded; ice lingers in winter.'},
+  {id:'r-bergen', type:'run', name:'Elk Meadow to Bergen Peak', area:'Evergreen', lat:39.6615, lon:-105.3545, thElev:7600, highElev:9700, miles:9.6, gain:2400, tech:2, exposure:'forest', note:'North side holds snow; summit spur is rocky.'},
+  {id:'r-alderfer', type:'run', name:'Alderfer/Three Sisters loop', area:'Evergreen', lat:39.6262, lon:-105.3600, thElev:7800, highElev:8300, miles:5.0, gain:900, tech:3, exposure:'forest', note:'Rocky and rooty; slower than the numbers suggest.'},
+  {id:'r-galbraith', type:'run', name:'Mount Galbraith loop', area:'Golden', lat:39.7730, lon:-105.2460, thElev:6200, highElev:7260, miles:4.2, gain:1000, tech:2, exposure:'foothills', note:'South-facing; dries fast after snow.'},
+  {id:'r-ntable', type:'run', name:'North Table Mountain loop', area:'Golden', lat:39.7880, lon:-105.2140, thElev:6000, highElev:6550, miles:7.0, gain:1000, tech:1, exposure:'foothills', note:'Wide doubletrack on top; exposed to wind.'},
+  {id:'r-white', type:'run', name:'White Ranch: Belcher Hill & Mustang', area:'Golden', lat:39.8000, lon:-105.2440, thElev:6100, highElev:7500, miles:8.5, gain:2000, tech:2, exposure:'foothills', note:'Belcher Hill is a sustained climb; heavy bike traffic.'},
+  {id:'r-beaverbrook', type:'run', name:'Beaver Brook Trail from Windy Saddle', area:'Lookout Mountain', lat:39.7445, lon:-105.2340, thElev:6900, highElev:7300, miles:6.0, gain:1500, tech:3, exposure:'forest', note:'One of the most technical trails near Denver.'},
+  {id:'r-royalarch', type:'run', name:'Royal Arch', area:'Chautauqua, Boulder', lat:39.9990, lon:-105.2815, thElev:5700, highElev:6950, miles:3.4, gain:1400, tech:3, exposure:'foothills', note:'Steep stone steps; more power hike than run.'},
+  {id:'r-greenbldr', type:'run', name:'Green Mountain via Gregory Canyon & Ranger Trail', area:'Boulder', lat:39.9985, lon:-105.2930, thElev:5850, highElev:8144, miles:5.6, gain:2400, tech:3, exposure:'forest', note:'Upper slopes hold ice; carry microspikes in winter.'},
+  {id:'r-bearpeak', type:'run', name:'Bear Peak via Fern Canyon', area:'Boulder (NCAR)', lat:39.9780, lon:-105.2745, thElev:6100, highElev:8461, miles:7.6, gain:2700, tech:3, exposure:'forest', note:'Fern Canyon is very steep; check OSMP for seasonal closures.'},
+  {id:'r-sanitas', type:'run', name:'Mount Sanitas loop', area:'Boulder', lat:40.0195, lon:-105.2975, thElev:5500, highElev:6863, miles:3.2, gain:1300, tech:3, exposure:'foothills'},
+  {id:'r-mesa', type:'run', name:'Mesa Trail end to end and back', area:'Boulder', lat:39.9385, lon:-105.2580, thElev:5650, highElev:6500, miles:13.5, gain:2800, tech:2, exposure:'foothills'},
+  {id:'r-walker', type:'run', name:'Walker Ranch loop', area:'Flagstaff Rd, Boulder', lat:39.9520, lon:-105.3390, thElev:7250, highElev:7400, miles:7.8, gain:1600, tech:2, exposure:'forest', note:'One steep stair section down to South Boulder Creek.'},
+  {id:'r-betasso', type:'run', name:'Betasso Preserve: Canyon Loop', area:'Boulder Canyon', lat:40.0165, lon:-105.3450, thElev:6600, highElev:6700, miles:3.3, gain:500, tech:1, exposure:'forest', note:'Fast, flowy singletrack shared with bikes.'},
+  {id:'r-heil', type:'run', name:'Heil Valley Ranch: Wapiti & Ponderosa', area:'Lyons', lat:40.1495, lon:-105.2985, thElev:6000, highElev:6900, miles:8.0, gain:1200, tech:2, exposure:'foothills'},
+  {id:'r-hall', type:'run', name:'Hall Ranch: Bitterbrush & Nelson Loop', area:'Lyons', lat:40.2140, lon:-105.2880, thElev:5500, highElev:6800, miles:9.6, gain:1600, tech:2, exposure:'foothills'},
+  {id:'r-rabbit', type:'run', name:'Rabbit Mountain loops', area:'Lyons', lat:40.2470, lon:-105.2230, thElev:5600, highElev:6000, miles:5.0, gain:500, tech:2, exposure:'foothills', note:'Rocky and exposed.'},
+  {id:'r-ggc', type:'run', name:'Golden Gate Canyon: Mule Deer & Raccoon loops', area:'Golden Gate Canyon SP', lat:39.8315, lon:-105.4107, thElev:7600, highElev:9100, miles:7.0, gain:1500, tech:2, exposure:'forest', note:'State park pass required.'},
+  {id:'r-staunton', type:'run', name:'Staunton: Staunton Ranch & Mason Creek', area:'Pine', lat:39.5000, lon:-105.3790, thElev:8300, highElev:9300, miles:7.0, gain:1300, tech:2, exposure:'forest', note:'State park pass required.'},
+  {id:'r-meyer', type:'run', name:'Meyer Ranch loop', area:'Aspen Park (US 285)', lat:39.5468, lon:-105.2715, thElev:7850, highElev:8750, miles:4.6, gain:900, tech:1, exposure:'forest', note:'North-facing timber holds snow and ice.'},
+  {id:'r-ctbuffalo', type:'run', name:'Colorado Trail at Buffalo Creek', area:'Little Scraggy TH', lat:39.3330, lon:-105.2550, thElev:7700, highElev:8100, miles:10.0, gain:1200, tech:1, exposure:'forest', note:'Fast decomposed-granite singletrack; little shade in the old burn.'},
+  {id:'r-deercreek', type:'run', name:'Deer Creek Canyon: Plymouth Creek & Homesteader', area:'Littleton', lat:39.5430, lon:-105.1520, thElev:6000, highElev:7200, miles:5.6, gain:1400, tech:3, exposure:'foothills'},
+  {id:'r-waterton', type:'run', name:'Waterton Canyon to Strontia Springs Dam', area:'Littleton', lat:39.4920, lon:-105.0950, thElev:5500, highElev:6100, miles:12.4, gain:600, tech:1, exposure:'foothills', note:'Gravel road. No dogs; watch for bighorn sheep and Denver Water trucks.'},
+  {id:'r-carpenter', type:'run', name:'Carpenter Peak', area:'Roxborough SP', lat:39.4290, lon:-105.0690, thElev:6200, highElev:7166, miles:6.4, gain:1000, tech:2, exposure:'foothills', note:'No dogs; state park pass; gate hours apply.'},
+  {id:'r-castlewood', type:'run', name:'Castlewood Canyon: Inner Canyon & Rim Rock', area:'Franktown', lat:39.3330, lon:-104.7460, thElev:6200, highElev:6500, miles:4.0, gain:400, tech:2, exposure:'foothills', note:'State park pass required.'},
+  {id:'r-herman', type:'run', name:'Herman Gulch to Herman Lake', area:'I-70 Exit 218', lat:39.7030, lon:-105.8540, thElev:10300, highElev:12000, miles:6.6, gain:1800, tech:2, exposure:'alpine', winterAvy:true, note:'Upper basin crosses avalanche paths in winter.'},
+  {id:'r-chicago', type:'run', name:'Chicago Lakes from Echo Lake', area:'Mount Blue Sky area', lat:39.6567, lon:-105.6008, thElev:10600, highElev:11750, miles:9.4, gain:2300, tech:2, exposure:'alpine', winterAvy:true, note:'Drops to the reservoir first; the upper valley is avalanche terrain in winter.'},
+  {id:'r-barr', type:'run', name:'Barr Trail to Barr Camp', area:'Manitou Springs', lat:38.8575, lon:-104.9330, thElev:6700, highElev:10200, miles:13.0, gain:3800, tech:2, exposure:'forest', note:'Paid parking that fills early; upper trail holds snow.'},
+  {id:'r-rrcos', type:'run', name:'Red Rock Canyon Open Space loops', area:'Colorado Springs', lat:38.8520, lon:-104.8800, thElev:6100, highElev:6500, miles:6.0, gain:700, tech:1, exposure:'foothills'},
+  {id:'r-gemlake', type:'run', name:'Gem Lake', area:'Lumpy Ridge, Estes Park', lat:40.3960, lon:-105.5130, thElev:7850, highElev:8830, miles:3.6, gain:1000, tech:3, exposure:'foothills', note:'Short, steep and rocky.'},
+  {id:'r-royal', type:'run', name:'Mount Royal & Rainbow Lake', area:'Frisco', lat:39.5762, lon:-106.1037, thElev:9100, highElev:10500, miles:3.6, gain:1400, tech:3, exposure:'forest', note:'Steep; snowpacked in winter.'},
+
+  // ---------- Climbs ----------
+  {id:'c-redgarden', type:'climb', name:'Eldorado Canyon: Redgarden Wall', area:'Eldorado Springs', lat:39.9315, lon:-105.2900, elev:6200, rock:'sandstone', wet:'medium', aspects:['S','SE'], styles:['trad','multi'], approach:10, note:'State park fee; lot fills early on weekends.'},
+  {id:'c-bastille', type:'climb', name:'Eldorado Canyon: The Bastille', area:'Eldorado Springs', lat:39.9310, lon:-105.2840, elev:6000, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:2},
+  {id:'c-windtower', type:'climb', name:'Eldorado Canyon: Wind Tower', area:'Eldorado Springs', lat:39.9312, lon:-105.2870, elev:6100, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:5},
+  {id:'c-third', type:'climb', name:'Third Flatiron (East Face)', area:'Boulder', lat:39.9880, lon:-105.2930, th:[39.9990,-105.2815], elev:7000, rock:'conglomerate', wet:'medium', aspects:['E'], styles:['trad','multi'], approach:40, note:'Morning sun, shade after midday. Rappel descent.'},
+  {id:'c-golden', type:'climb', name:'Golden Cliffs (North Table Mountain)', area:'Golden', lat:39.7745, lon:-105.2215, th:[39.7738,-105.2190], elev:6200, rock:'basalt', wet:'low', aspects:['W','SW'], styles:['sport','trad'], approach:15, note:'Afternoon sun; a winter go-to.', seasonal:{months:[2,3,4,5,6,7], note:'Some sections close for nesting raptors in spring and summer.'}},
+  {id:'c-ccc', type:'climb', name:'Clear Creek Canyon crags', area:'US 6, Golden', lat:39.7480, lon:-105.2770, elev:6700, rock:'gneiss', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:10, note:'Sunny and shady walls on both sides of the canyon; roadside parking.'},
+  {id:'c-bouldercyn', type:'climb', name:'Boulder Canyon crags', area:'CO 119, Boulder', lat:40.0050, lon:-105.3300, elev:6700, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad','multi'], approach:10},
+  {id:'c-flagstaff', type:'climb', name:'Flagstaff Mountain bouldering', area:'Boulder', lat:40.0020, lon:-105.3030, elev:7000, rock:'sandstone', wet:'medium', aspects:['mixed'], styles:['boulder'], approach:2, note:'Paid parking for out-of-county vehicles.'},
+  {id:'c-morrison', type:'climb', name:'Morrison bouldering', area:'Morrison', lat:39.6480, lon:-105.1990, elev:6300, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['boulder'], approach:15},
+  {id:'c-lumpy', type:'climb', name:'Lumpy Ridge', area:'Estes Park', lat:40.3990, lon:-105.5150, th:[40.3960,-105.5130], elev:8600, rock:'granite', wet:'low', aspects:['S'], styles:['trad','multi'], approach:45, seasonal:{months:[3,4,5,6,7], note:'Raptor closures on several formations in spring and summer.'}},
+  {id:'c-staunton', type:'climb', name:'Staunton State Park crags', area:'Pine', lat:39.5000, lon:-105.3790, elev:9000, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','sport'], approach:75, note:'Long approaches; state park pass.'},
+  {id:'c-castlewood', type:'climb', name:'Castlewood Canyon', area:'Franktown', lat:39.3330, lon:-104.7460, elev:6300, rock:'conglomerate', wet:'medium', aspects:['mixed'], styles:['sport','boulder'], approach:15, note:'State park pass required.'},
+  {id:'c-turkey', type:'climb', name:'Turkey Rocks', area:'Deckers', lat:39.1240, lon:-105.2350, elev:7900, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad'], approach:30, note:'Classic cracks; dirt access road.'},
+  {id:'c-elevenmile', type:'climb', name:'Elevenmile Canyon', area:'Lake George', lat:38.9640, lon:-105.4100, elev:8000, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:5, note:'Day-use fee; canyon road can be icy in winter.'},
+  {id:'c-gotg', type:'climb', name:'Garden of the Gods', area:'Colorado Springs', lat:38.8790, lon:-104.8800, elev:6400, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['trad','sport'], approach:5, note:'Free climbing permit required; never climb when the rock is wet.'},
+  {id:'c-rrcos', type:'climb', name:'Red Rock Canyon Open Space', area:'Colorado Springs', lat:38.8540, lon:-104.8810, elev:6200, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['sport'], approach:15, note:'Soft sandstone; needs dry days.'},
+  {id:'c-shelf', type:'climb', name:'Shelf Road', area:'Cañon City', lat:38.6370, lon:-105.2240, elev:6500, rock:'limestone', wet:'low', aspects:['S','E'], styles:['sport'], approach:10, note:'Sunny limestone sport; the classic winter crag.'},
+  {id:'c-vedauwoo', type:'climb', name:'Vedauwoo', area:'Laramie, WY', lat:41.1590, lon:-105.3800, elev:8200, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','boulder'], approach:15, note:'Wide cracks, coarse rock, notorious wind.'},
+
+  // ---------- Ski lines ----------
+  {id:'s-bp-east', type:'ski', name:"Berthoud Pass: East Side & Hell's Half Acre", area:'Berthoud Pass (US 40)', lat:39.7983, lon:-105.7772, line:[39.7995,-105.7735], thElev:11300, top:11700, bottom:11300, aspects:['W','N','NW'], ates:'challenging', approachMi:0.4, minSession:120, note:"Short laps from the pass lot; Hell's Half Acre is a common beacon-practice spot.", src:'https://frontrangeskimo.squarespace.com/berthoud-pass-hells-half-acre-and-east-side'},
+  {id:'s-bp-west', type:'ski', name:'Berthoud Pass: West Side', area:'Berthoud Pass (US 40)', lat:39.7983, lon:-105.7772, line:[39.7985,-105.7860], thElev:11300, top:11945, bottom:11300, aspects:['N','NE','E'], ates:'challenging', approachMi:1.0, minSession:120, note:'Higher terrain between The Roll and The Plunge is best left for spring snow.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-west'},
+  {id:'s-bp-noname', type:'ski', name:'Berthoud Pass: No Name & Mount Russell', area:'Berthoud Pass (US 40)', lat:39.7983, lon:-105.7772, line:[39.7930,-105.7960], thElev:11300, top:12424, bottom:11300, aspects:['E','SE','S'], ates:'complex', approachMi:1.5, note:'Corniced ridges; every slope here is avalanche terrain.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-west'},
+  {id:'s-bp-8090', type:'ski', name:'Berthoud Pass: 80s & 90s', area:'Ditch TH, US 40', lat:39.8020, lon:-105.7760, line:[39.8060,-105.7820], thElev:11245, top:11460, bottom:10800, aspects:['N'], ates:'challenging', approachMi:0.5, minSession:120, note:'Ends at the Current Creek trailhead, so set a shuttle. US 40 below is in the runout.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-west'},
+  {id:'s-cc-knoll', type:'ski', name:'Current Creek: Hidden Knoll', area:'Berthoud Pass north side', lat:39.8125, lon:-105.7755, line:[39.8150,-105.7860], thElev:10800, top:11900, bottom:10800, aspects:['N','NE','E','SE'], ates:'challenging', approachMi:1.2, note:'X Bowls are avalanche terrain; the south chutes get sun-affected.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-north'},
+  {id:'s-cc-110s', type:'ski', name:'Current Creek: The 110s', area:'Berthoud Pass north side', lat:39.8125, lon:-105.7755, line:[39.8100,-105.7680], thElev:10800, top:11721, bottom:10800, aspects:['E','SE','S'], ates:'challenging', approachMi:1.0, note:'Upper 110s are the lower-angle option; Postage Stamp is steep and slides often.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-north'},
+  {id:'s-2nd-ridge', type:'ski', name:'Second Creek Ridge', area:'Berthoud Pass north side', lat:39.8270, lon:-105.7700, line:[39.8240,-105.7620], thElev:10595, top:11721, bottom:10595, aspects:['N','NE','E'], ates:'challenging', approachMi:1.0, note:'Even the tree runs are avalanche terrain; the windward west side is thin.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-north'},
+  {id:'s-1st-ridge', type:'ski', name:'First Creek Ridge', area:'Berthoud Pass north side', lat:39.8360, lon:-105.7660, line:[39.8340,-105.7580], thElev:10445, top:11200, bottom:10445, aspects:['NE'], ates:'challenging', approachMi:0.8, note:'Wind-loaded NE gullies; Chimney Chute is a terrain trap.', src:'https://frontrangeskimo.squarespace.com/berthoud-pass-north'},
+  {id:'s-butler', type:'ski', name:'Butler Gulch', area:'Jones Pass Rd (Henderson Mine)', lat:39.7690, lon:-105.8480, line:[39.7560,-105.8660], thElev:10465, top:12085, bottom:10465, aspects:['E','N','W'], ates:'challenging', approachMi:1.5, note:'Gentle road approach, but Central Gully and the East Chutes traverse carry real avalanche exposure.', src:'https://frontrangeskimo.squarespace.com/butler-gulch'},
+  {id:'s-jones-s', type:'ski', name:'Jones Pass South', area:'Jones Pass Rd (Henderson Mine)', lat:39.7690, lon:-105.8480, line:[39.7700,-105.8770], thElev:10465, top:11900, bottom:10465, aspects:['N'], ates:'challenging', approachMi:2.0, note:'Shared with snowmobiles.', src:'https://frontrangeskimo.squarespace.com/jones-pass'},
+  {id:'s-jones-wf', type:'ski', name:'Jones Pass: West Fork Bowl', area:'Jones Pass Rd (Henderson Mine)', lat:39.7690, lon:-105.8480, line:[39.7800,-105.8900], thElev:10465, top:12673, bottom:10465, aspects:['E','SE'], ates:'complex', approachMi:2.5, src:'https://frontrangeskimo.squarespace.com/jones-pass'},
+  {id:'s-drygulch', type:'ski', name:'Dry Gulch & Mount Trelease', area:'I-70 Exit 216', lat:39.6838, lon:-105.8870, line:[39.6960,-105.8800], thElev:10700, top:11800, bottom:10700, aspects:['SE','E','NE'], ates:'challenging', approachMi:1.7, note:"No snowmobiles. Cross-loaded NE gullies have caught many parties; Pat's Knob bowl can run onto the Boulevard.", src:'https://frontrangeskimo.squarespace.com/dry-gulch'},
+  {id:'s-lp-glades', type:'ski', name:'Loveland Pass: North/Northeast Glades', area:'Loveland Pass (US 6)', lat:39.6638, lon:-105.8794, line:[39.6680,-105.8760], thElev:11990, top:11978, bottom:11367, aspects:['N','NE'], ates:'challenging', approachMi:0.1, minSession:120, note:'Drive-up laps with a shuttle driver. CDOT fires explosives here; never ski during control work.', src:'https://powderproject.com/trail/7000260/loveland-pass-north-northeast-glades'},
+  {id:'s-lp-ridge', type:'ski', name:'Loveland Pass: Loveland Ridge bowls', area:'Loveland Pass (US 6)', lat:39.6638, lon:-105.8794, line:[39.6560,-105.8890], thElev:11990, top:12423, bottom:11500, aspects:['N','E'], ates:'complex', approachMi:1.5, note:'Watch cornices; most pitches here can slide after big storms.', src:'https://www.powderproject.com/trail/7000524/loveland-ridge'},
+  {id:'s-tuningfork', type:'ski', name:'Torreys Peak: Tuning Fork', area:'Bakerville (I-70 Exit 221)', lat:39.6920, lon:-105.8040, line:[39.6450,-105.8240], thElev:9750, top:14070, bottom:11446, aspects:['NW'], ates:'complex', approachMi:4.0, note:'Stevens Gulch Rd is closed in winter, so it is a long day from Bakerville. Approach crosses big slide paths under Kelso Mountain; often 100–300 ft of rock downclimb at the top.', src:'https://www.powderproject.com/trail/7000433/tuning-fork-aka-torreys-northwest-face'},
+  {id:'s-dragonstail', type:'ski', name:"Flattop Mountain: Dragon's Tail Couloir", area:'Bear Lake, RMNP', lat:40.3127, lon:-105.6455, line:[40.3045,-105.6700], thElev:9450, top:11880, bottom:9460, aspects:['S'], ates:'complex', approachMi:2.0, note:'Steep couloir above Emerald Lake with a winter cornice overhead. Park entrance fee.', src:'https://skimo.co/dragons-tail-couloir-rocky-mountain-national-park'},
+  {id:'s-stmarys', type:'ski', name:"St. Mary's Glacier", area:'Fall River Rd, Alice', lat:39.8257, lon:-105.6444, line:[39.8330,-105.6560], thElev:10400, top:11400, bottom:10750, aspects:['SE','S'], ates:'challenging', approachMi:0.6, minSession:120, note:'Year-round snowfield and a common early-season ski. Paid parking. Aspect is approximate.', src:'https://trails.colorado.gov/trails/st-marys-glacier-12347'},
+  {id:'s-james', type:'ski', name:"James Peak: East slopes from St. Mary's", area:'Fall River Rd, Alice', lat:39.8257, lon:-105.6444, line:[39.8480,-105.6800], thElev:10400, top:13294, bottom:11400, aspects:['E','SE'], ates:'challenging', approachMi:3.0, note:'Above the glacier; slopes steepen near 12,000 ft.', src:'https://summitpost.org/east-slopes-st-mary-s-glacier/164488'},
+  {id:'s-cristo', type:'ski', name:'Quandary Peak: Cristo Couloir', area:'Blue Lakes Rd, Breckenridge', lat:39.3880, lon:-106.0640, line:[39.3925,-106.1060], thElev:10900, top:14265, bottom:11700, aspects:['S'], ates:'complex', approachMi:2.5, note:"Blue Lakes Rd isn't plowed to the dam in winter, which adds distance. A spring line most seasons.", src:'https://en.wikipedia.org/wiki/Cristo_Couloir'},
+  {id:'s-mayflower', type:'ski', name:'Mayflower Gulch', area:'CO 91 south of Copper', lat:39.4300, lon:-106.1640, line:[39.4160,-106.1560], thElev:10980, top:11600, bottom:10980, aspects:['mixed'], ates:'challenging', approachMi:1.8, note:'The mining road to the Boston Mine cabins is gentle; the cirque walls above are serious avalanche terrain.'},
+  {id:'s-shrine', type:'ski', name:'Shrine Pass road', area:'Vail Pass (I-70 Exit 190)', lat:39.5310, lon:-106.2170, line:[39.5420,-106.2400], thElev:10600, top:11100, bottom:10600, aspects:['mixed'], ates:'simple', approachMi:2.5, note:'Low-angle road tour. Vail Pass recreation fee; shared with snowmobiles near the pass.'},
+];
+
+/* ---------------- helpers ---------------- */
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const max = a => a.length ? Math.max(...a) : null;
+const min = a => a.length ? Math.min(...a) : null;
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371, r = Math.PI/180;
+  const dLat = (lat2-lat1)*r, dLon = (lon2-lon1)*r;
+  const s = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+// Fallback when routing is unavailable: winding-road factor at ~45 mph average plus parking.
+const estDriveMin = km => Math.round(km*1.35/72*60 + 5);
+function parseLocal(s){ // "2026-11-26T10:00" -> naive ms
+  return Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10), +(s.slice(11,13)||0), +(s.slice(14,16)||0));
+}
+const hourOf = ms => { const d = new Date(ms); return d.getUTCHours() + d.getUTCMinutes()/60; };
+function fmtClock(ms){
+  const d = new Date(ms); let h = d.getUTCHours(); const m = d.getUTCMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+  return m ? `${h}:${String(m).padStart(2,'0')} ${ap}` : `${h} ${ap}`;
+}
+function fmtDur(m){ m = Math.round(m); const h = Math.floor(m/60), r = m % 60; return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r} min`; }
+const in1 = v => (Math.round(v*10)/10).toFixed(1);
+const in2 = v => (Math.round(v*100)/100).toFixed(2);
+
+// Unit normalization, keyed off Open-Meteo's *_units strings.
+function toF(v, u){ return u && /C/.test(u) && !/F/.test(u) ? v*9/5+32 : v; }
+function toMph(v, u){ u = (u||'').toLowerCase(); if (u.includes('km')) return v/1.609; if (u.includes('m/s')) return v*2.237; if (u.includes('kn')) return v*1.151; return v; }
+function toIn(v, u){ u = (u||'').toLowerCase().trim(); if (u === 'mm') return v/25.4; if (u === 'cm') return v/2.54; if (u === 'm') return v*39.37; if (u === 'ft') return v*12; return v; }
+
+function normWx(r){
+  const Hh = r.hourly || {}, U = r.hourly_units || {}, D = r.daily || {};
+  const n = (Hh.time || []).length;
+  const arr = (k, conv) => (Hh[k] || new Array(n).fill(null)).map(v => v == null ? null : (conv ? conv(v, U[k]) : v));
+  const ws = arr('wind_speed_10m', toMph), wg = arr('wind_gusts_10m', toMph);
+  const rain = arr('rain', toIn), showers = arr('showers', toIn);
+  return {
+    t: (Hh.time || []).map(parseLocal),
+    T: arr('temperature_2m', toF), AT: arr('apparent_temperature', toF),
+    P: arr('precipitation', toIn), R: rain.map((v,i) => (v||0) + (showers[i]||0)),
+    SN: arr('snowfall', toIn), PP: arr('precipitation_probability'), WC: arr('weather_code'),
+    CC: arr('cloud_cover'), WS: ws, WG: wg.map((v,i) => v == null ? (ws[i] == null ? null : ws[i]*1.4) : v),
+    SD: arr('snow_depth', toIn),
+    days: D.time || [], sunrise: (D.sunrise || []).map(parseLocal), sunset: (D.sunset || []).map(parseLocal),
+    elevationFt: r.elevation != null ? r.elevation*3.281 : null, tz: r.timezone,
+  };
+}
+
+/* ---------------- avalanche zones ---------------- */
+function ringContains(ring, x, y){
+  let inside = false;
+  for (let i = 0, j = ring.length-1; i < ring.length; j = i++){
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj-xi)*(y-yi)/(yj-yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function polyContains(rings, x, y){
+  if (!rings.length || !ringContains(rings[0], x, y)) return false;
+  for (let k = 1; k < rings.length; k++) if (ringContains(rings[k], x, y)) return false;
+  return true;
+}
+function geomContains(g, x, y){
+  if (!g) return false;
+  if (g.type === 'Polygon') return polyContains(g.coordinates, x, y);
+  if (g.type === 'MultiPolygon') return g.coordinates.some(p => polyContains(p, x, y));
+  return false;
+}
+// Returns the containing zone with the highest danger (conservative when zones overlap).
+function findZone(geojson, lat, lon){
+  let best = null;
+  for (const f of (geojson && geojson.features) || []){
+    if (!geomContains(f.geometry, lon, lat)) continue;
+    const p = f.properties || {};
+    const z = {
+      danger: Number(p.danger_level), dangerText: p.danger || '', name: p.name || '', center: p.center || '',
+      centerId: p.center_id || '', link: p.link || p.center_link || '', offSeason: !!p.off_season,
+      start: p.start_date || null, end: p.end_date || null, advice: p.travel_advice || '', id: f.id,
+    };
+    if (!best || (z.danger || -1) > (best.danger || -1)) best = z;
+  }
+  return best;
+}
+// Danger x terrain (ATES) matrix. 0 go, 1 caution, 2 no-go.
+function avyMatrix(danger, ates){
+  const m = {
+    simple:      {1:0, 2:0, 3:1, 4:1, 5:2},
+    challenging: {1:0, 2:1, 3:1, 4:2, 5:2},
+    complex:     {1:1, 2:1, 3:2, 4:2, 5:2},
+  };
+  return (m[ates] || m.challenging)[danger] ?? 1;
+}
+
+/* ---------------- items ---------------- */
+function durationMin(it){
+  if (it.type === 'run'){
+    if (!it.miles) return 90;
+    const pace = it.tech === 1 ? 10.5 : it.tech === 3 ? 13 : 11.5;
+    let d = it.miles*pace + (it.gain || 0)/100*1.2;
+    if (it.exposure === 'alpine') d *= 1.1;
+    return Math.round(d);
+  }
+  if (it.type === 'climb'){
+    const s = it.styles || [];
+    // Minimum worthwhile session, not a full day: a few pitches or problems.
+    const session = s.includes('multi') ? 180 : s.includes('trad') ? 120 : 90;
+    return (it.approach || 10)*2 + session;
+  }
+  const gain = Math.max(0, (it.top || 0) - (it.thElev || 0));
+  const tour = (it.approachMi || 0)*25 + gain/1200*60 + 45;
+  return Math.round(Math.max(it.minSession || 150, tour));
+}
+function prepare(it){
+  const o = Object.assign({source:'catalog'}, it);
+  o.aspects = o.aspects || ['mixed'];
+  o.drivePt = o.th ? {lat:o.th[0], lon:o.th[1]} : {lat:o.lat, lon:o.lon};
+  o.wxPt = o.line ? {lat:o.line[0], lon:o.line[1]} : {lat:o.lat, lon:o.lon};
+  o.wxElevFt = o.type === 'ski' ? ((o.top || 0) + (o.bottom || o.thElev || 0))/2
+    : o.type === 'run' ? (o.exposure === 'alpine' ? o.highElev : ((o.thElev || 0) + (o.highElev || o.thElev || 0))/2)
+    : o.elev;
+  if (!o.wxElevFt) o.wxElevFt = null;
+  o.dur = durationMin(o);
+  return o;
+}
+
+// OpenStreetMap elements (Overpass "out tags center") -> items.
+function osmToItems(elements, existing){
+  const out = [];
+  const near = (a, list, km) => list.some(b => b.type === a.type && haversineKm(a.lat, a.lon, b.lat, b.lon) < km);
+  for (const e of elements || []){
+    const t = e.tags || {};
+    const lat = e.lat ?? (e.center && e.center.lat), lon = e.lon ?? (e.center && e.center.lon);
+    if (lat == null || lon == null || !t.name) continue;
+    let o = null;
+    const base = {id:`osm-${e.type}-${e.id}`, source:'osm', name:t.name, area:'OpenStreetMap', lat, lon, osmUrl:`https://www.openstreetmap.org/${e.type}/${e.id}`};
+    if (/^(hiking|foot|running)$/.test(t.route || '')){
+      if (/^(nwn|iwn)$/.test(t.network || '')) continue;
+      const km = parseFloat(t.distance);
+      if (km > 40) continue;
+      const sac = t.sac_scale || '';
+      o = Object.assign(base, {type:'run', miles: km ? km*0.6214 : null, gain:null, tech: /alpine|demanding/.test(sac) ? 3 : sac === 'mountain_hiking' ? 2 : null, exposure:'foothills'});
+    } else if (/^(crag|area|boulder)$/.test(t.climbing || '')){
+      if (t.indoor === 'yes' || /sports_centre|fitness_centre/.test(t.leisure || '')) continue;
+      const rock = (t['climbing:rock'] || '').toLowerCase();
+      const styles = [];
+      if (t['climbing:sport'] && t['climbing:sport'] !== 'no') styles.push('sport');
+      if (t['climbing:trad'] && t['climbing:trad'] !== 'no') styles.push('trad');
+      if (t.climbing === 'boulder' || (t['climbing:boulder'] && t['climbing:boulder'] !== 'no')) styles.push('boulder');
+      if (t['climbing:multipitch'] && t['climbing:multipitch'] !== 'no') styles.push('multi');
+      const ori = (t['climbing:orientation'] || '').toUpperCase().split(/[;,\s]+/).filter(a => ASPECTS.includes(a));
+      o = Object.assign(base, {type:'climb', rock: rock || 'unknown rock',
+        wet: /sandstone/.test(rock) ? 'high' : /conglomerate/.test(rock) ? 'medium' : rock ? 'low' : 'medium',
+        aspects: ori.length ? ori : ['mixed'], styles: styles.length ? styles : ['sport','trad'], approach:15});
+    } else if (/^(skitour|backcountry)$/.test(t['piste:type'] || '')){
+      o = Object.assign(base, {type:'ski', aspects:['mixed'], ates:'challenging', approachMi:2, minSession:180, unrated:true});
+    }
+    if (!o) continue;
+    if (near(o, existing, 1.5)) continue;
+    if (out.some(b => b.type === o.type && b.name === o.name && haversineKm(o.lat, o.lon, b.lat, b.lon) < 3)) continue;
+    out.push(o);
+  }
+  return out;
+}
+
+/* ---------------- scoring ---------------- */
+function sunFactor(aspects, hr, rise, set){
+  if (hr < rise || hr >= set) return 0;
+  const inR = (a, b) => hr >= a && hr < b;
+  let best = -0.3;
+  for (const a of aspects){
+    let f;
+    switch (a){
+      case 'E':  f = inR(rise, 12) ? 1 : 0.1; break;
+      case 'SE': f = inR(rise+0.5, 14) ? 1 : 0.2; break;
+      case 'S':  f = inR(9, 15.5) ? 1 : 0.5; break;
+      case 'SW': f = inR(11, set-0.5) ? 1 : 0.2; break;
+      case 'W':  f = inR(12.5, set) ? 1 : 0.1; break;
+      case 'NE': f = inR(rise, 10) ? 0.4 : -0.3; break;
+      case 'NW': f = inR(15, set) ? 0.3 : -0.3; break;
+      case 'N':  f = -0.3; break;
+      default:   f = 0.45; // mixed: you can pick a sunny wall
+    }
+    best = Math.max(best, f);
+  }
+  return best;
+}
+
+// One hour -> flags [key, level, value] and a comfort score 0-100.
+function hourEval(it, h, sun){
+  const f = [];
+  let c = 100;
+  const thunder = h.WC >= 95;
+  const P = h.P || 0, PP = h.PP || 0, WG = h.WG || 0;
+  const alpine = it.type === 'ski' || it.exposure === 'alpine' || (it.elevFt || it.wxElevFt || 0) >= 11000;
+  if (it.type === 'run'){
+    if (thunder) f.push(['storm', alpine ? 2 : 1]);
+    if (P >= 0.1 || HEAVY.has(h.WC)) f.push(['precipHeavy', alpine ? 2 : 1, P]);
+    else if (P > 0.01) f.push(['precipLight', 0, P]);
+    if (FREEZING.has(h.WC)) f.push(['ice', 1]);
+    if (WG >= 55) f.push(['gust', 2, WG]); else if (WG >= 40) f.push(['gust', 1, WG]);
+    if (h.AT <= -10) f.push(['cold', 2, h.AT]); else if (h.AT <= 10) f.push(['cold', 1, h.AT]);
+    if (h.AT >= 100) f.push(['hot', 2, h.AT]); else if (h.AT >= 88) f.push(['hot', 1, h.AT]);
+    if (!h.day) f.push(['dark', 1]);
+    c -= h.AT < 35 ? (35 - h.AT)*1.4 : h.AT > 62 ? (h.AT - 62)*2 : 0;
+    c -= Math.max(0, WG - 15)*1.2;
+    c -= P > 0.005 ? 12 + P*120 : 0;
+    c -= PP*0.08;
+    if (!h.day) c -= 20;
+  } else if (it.type === 'climb'){
+    const multi = (it.styles || []).includes('multi') && (it.styles || []).length <= 2;
+    if (thunder) f.push(['storm', 2]);
+    if (P > 0.005 || (h.SN || 0) > 0) f.push(['wetNow', 2, P]);
+    else if (PP >= 40) f.push(['pchance', 1, PP]);
+    if (WG >= (multi ? 40 : 45)) f.push(['gust', 2, WG]); else if (WG >= (multi ? 25 : 30)) f.push(['gust', 1, WG]);
+    const sf = sunFactor(it.aspects, h.hour + 0.5, sun.rise, sun.set);
+    const eff = h.AT + (sf > 0 ? 15*sf*(1 - (h.CC || 0)/100) : sf*13);
+    h.rockT = eff;
+    if (!h.day) f.push(['darkClimb', 2]);
+    if (eff < 25) f.push(['rockCold', 2, eff]); else if (eff < 38) f.push(['rockCold', 1, eff]);
+    if (eff > 95) f.push(['rockHot', 2, eff]); else if (eff > 84) f.push(['rockHot', 1, eff]);
+    c -= eff < 50 ? (50 - eff)*2 : eff > 74 ? (eff - 74)*2.5 : 0;
+    c -= Math.max(0, WG - 12)*1.5;
+    c -= PP*0.2;
+  } else { // ski
+    if (thunder) f.push(['storm', 2]);
+    if ((h.R || 0) > 0.02 && h.T >= 33) f.push(['rainOnSnow', 2, h.R]);
+    if (FREEZING.has(h.WC)) f.push(['ice', 2]);
+    if ((h.SN || 0) >= 0.6 || h.WC === 75 || h.WC === 86) f.push(['whiteout', 1, h.SN || 0]);
+    if (WG >= 50) f.push(['gust', 2, WG]); else if (WG >= 35) f.push(['gust', 1, WG]);
+    if (h.AT <= -30) f.push(['cold', 2, h.AT]); else if (h.AT <= -12) f.push(['cold', 1, h.AT]);
+    const solar = it.aspects.filter(a => SOLAR.has(a) || a === 'mixed');
+    const sf = solar.length ? sunFactor(solar, h.hour + 0.5, sun.rise, sun.set) : 0;
+    if (h.T >= 45 || (h.T >= 36 && sf >= 0.9 && (h.CC || 0) < 60)) f.push(['warm', 1, h.T]);
+    if (!h.day) f.push(['dark', 1]);
+    c -= h.AT < 5 ? (5 - h.AT)*1.2 : 0;
+    c -= h.T > 32 ? (h.T - 32)*3 : 0;
+    c -= Math.max(0, WG - 20)*1.2;
+    c -= (h.SN || 0) >= 0.6 ? 10 : 0;
+    if (!h.day) c -= 25;
+  }
+  return {flags: f, comfort: clamp(c, 0, 100)};
+}
+
+function whenText(hrs, blockLen){
+  if (!hrs.length || hrs.length >= blockLen) return '';
+  const a = Math.min(...hrs), b = Math.max(...hrs) + H;
+  return ` (${fmtClock(a)}–${fmtClock(b)})`;
+}
+const HOUR_TEXT = {
+  storm:       (v, w) => `Thunderstorms possible${w}`,
+  precipHeavy: (v, w) => `Heavy precipitation, up to ${in2(max(v))} in/hr${w}`,
+  precipLight: (v, w) => `Light precipitation${w}`,
+  ice:         (v, w) => `Freezing rain or drizzle${w}`,
+  gust:        (v, w) => `Gusts to ${Math.round(max(v))} mph${w}`,
+  cold:        (v, w) => `Feels like ${Math.round(min(v))}°F${w}`,
+  hot:         (v, w) => `Feels like ${Math.round(max(v))}°F${w}`,
+  dark:        (v, w) => `Outside daylight${w}; bring a headlamp`,
+  darkClimb:   (v, w) => `After dark${w}`,
+  wetNow:      (v, w) => `Rain or snow falling${w}; rock will be wet`,
+  pchance:     (v, w) => `${Math.round(max(v))}% chance of precipitation${w}`,
+  rockCold:    (v, w) => `Cold rock, about ${Math.round(min(v))}°F with sun or shade factored in${w}`,
+  rockHot:     (v, w) => `Hot, greasy rock, about ${Math.round(max(v))}°F${w}`,
+  rainOnSnow:  (v, w) => `Rain on snow${w}`,
+  whiteout:    (v, w) => `Heavy snowfall and poor visibility${w}`,
+  warm:        (v, w) => `Warming to ${Math.round(max(v))}°F on sunny aspects${w}; wet slides possible`,
+};
+
+/* evaluate(item, ctx)
+   ctx = { wx (normWx), S, E (naive ms window), d2d, drive (min), zone (findZone or null),
+           date 'YYYY-MM-DD', month 1-12, zoneNote? } */
+function evaluate(it, ctx){
+  const {wx, S, E, d2d, drive, zone, date} = ctx;
+  const month = ctx.month || (+date.slice(5,7));
+  const driveMs = (drive || 0)*60000;
+  const onS = d2d ? S + driveMs : S, onE = d2d ? E - driveMs : E;
+  const availMin = Math.max(0, Math.round((onE - onS)/60000));
+  const di = Math.max(0, wx.days.indexOf(date));
+  const rise = wx.sunrise[di] != null ? hourOf(wx.sunrise[di]) : 7;
+  const set = wx.sunset[di] != null ? hourOf(wx.sunset[di]) : 17;
+  const riseMs = wx.sunrise[di], setMs = wx.sunset[di];
+  const startH = Math.ceil((onS - 15*60000)/H)*H, endH = Math.floor((onE + 15*60000)/H)*H;
+  const hours = [];
+  wx.t.forEach((t, i) => {
+    if (t < startH || t >= endH || wx.T[i] == null) return;
+    const mid = t + H/2;
+    const h = {i, t, hour: hourOf(t), T: wx.T[i], AT: wx.AT[i] ?? wx.T[i], P: wx.P[i] || 0, R: wx.R[i] || 0,
+      SN: wx.SN[i] || 0, PP: wx.PP[i] || 0, WC: wx.WC[i] || 0, CC: wx.CC[i] || 0, WS: wx.WS[i] || 0, WG: wx.WG[i] || 0,
+      day: riseMs != null ? (mid > riseMs && mid < setMs) : (hourOf(mid) > rise && hourOf(mid) < set)};
+    const ev = hourEval(it, h, {rise, set});
+    h.flags = ev.flags; h.comfort = ev.comfort;
+    h.level = Math.max(0, ...ev.flags.map(x => x[1]));
+    hours.push(h);
+  });
+
+  const flags = [];
+  const push = (level, text) => flags.push({level, text});
+  const need = Math.max(1, Math.ceil(it.dur/60));
+  if (availMin < it.dur){
+    const text = d2d
+      ? `about ${fmtDur(it.dur)} on site; the window leaves ${fmtDur(availMin)} after ${fmtDur(drive)} each way`
+      : `about ${fmtDur(it.dur)}; the window is ${fmtDur(availMin)}`;
+    if (availMin >= it.dur*0.8) push(1, `Tight on time: needs ${text}`);
+    else push(2, `Needs ${text}`);
+  }
+
+  let best = null;
+  if (hours.length){
+    const k = Math.min(need, hours.length);
+    for (let s = 0; s + k <= hours.length; s++){
+      const blk = hours.slice(s, s + k);
+      const lvl = Math.max(...blk.map(h => h.level));
+      const com = blk.reduce((a, h) => a + h.comfort, 0)/k;
+      if (!best || lvl < best.lvl || (lvl === best.lvl && com > best.com + 0.5)) best = {s, k, lvl, com};
+    }
+    const blk = hours.slice(best.s, best.s + best.k);
+    blk.forEach(h => h.best = true);
+    const agg = new Map();
+    for (const h of blk) for (const [key, lvl, val] of h.flags){
+      const a = agg.get(key) || {lvl:-9, vals:[], hrs:[]};
+      a.lvl = Math.max(a.lvl, lvl); if (val != null) a.vals.push(val); a.hrs.push(h.t); agg.set(key, a);
+    }
+    for (const [key, a] of agg) push(a.lvl, HOUR_TEXT[key](a.vals, whenText(a.hrs, blk.length)));
+  }
+
+  // Site conditions relative to the first on-site hour.
+  const i0 = best ? hours[best.s].i : (hours[0] ? hours[0].i : wx.t.findIndex(t => t >= onS));
+  const sumBack = (arr, n) => { let s = 0; for (let i = Math.max(0, i0 - n); i < i0; i++) s += arr[i] || 0; return s; };
+  const maxBack = (arr, n) => { let m = 0; for (let i = Math.max(0, i0 - n); i < i0; i++) m = Math.max(m, arr[i] || 0); return m; };
+  const P48 = sumBack(wx.P, 48), P24 = sumBack(wx.P, 24), P12 = sumBack(wx.P, 12), R48 = sumBack(wx.R, 48), SN48 = sumBack(wx.SN, 48);
+  const sd = i0 >= 0 ? wx.SD[i0] : null;
+  let bonus = 0;
+
+  if (it.type === 'run'){
+    if (sd != null && sd >= 4) push(1, `Snow on the trail likely, about ${Math.round(sd)} in on the ground (modeled)`);
+    else if (SN48 >= 2) push(1, `${in1(SN48)} in of new snow in the last 48 h; expect a snowy or muddy trail`);
+    if (R48 >= 0.25 && !(sd >= 4)) push(1, `${in2(R48)} in of rain in the last 48 h; expect mud, and some open-space trails ask you to turn back`);
+    if (it.winterAvy && sd != null && sd >= 6){
+      if (zone && zone.danger >= 1){
+        const lv = zone.danger >= 4 ? 2 : zone.danger >= 3 ? 1 : 0;
+        push(lv, `Route crosses avalanche paths; zone danger is ${zone.danger} (${DANGER[zone.danger]})`);
+      } else push(1, 'Route crosses avalanche paths; no avalanche rating found for this area');
+    }
+  } else if (it.type === 'climb'){
+    const rockName = it.rock || 'rock';
+    if (it.wet === 'high'){
+      if (P48 >= 0.05) push(2, `${in2(P48)} in of precipitation in the last 48 h; soft ${rockName} is weak when wet, give it two dry days`);
+    } else if (it.wet === 'medium'){
+      if (P24 >= 0.1) push(1, `${in2(P24)} in of precipitation in the last 24 h; ${rockName} may still be damp`);
+    } else if (P12 >= 0.25){
+      push(1, `${in2(P12)} in of precipitation in the last 12 h; expect seeps and wet cracks`);
+    }
+    if (sd != null && sd >= 2) push(it.wet === 'high' ? 2 : 1, `About ${Math.round(sd)} in of snow on the ground (modeled); melting snow wets ledges and holds`);
+    if (it.seasonal && it.seasonal.months.includes(month)) push(1, it.seasonal.note);
+  } else { // ski
+    if (sd == null) push(0, 'No modeled snow depth for this spot');
+    else if (sd < 6) push(2, `Not enough snow: about ${Math.round(sd)} in on the ground (modeled)`);
+    else if (sd < 18) push(1, `Thin cover: about ${Math.round(sd)} in on the ground (modeled); expect rocks`);
+    else push(-1, `About ${Math.round(sd)} in on the ground (modeled)`);
+    if (SN48 >= 4) bonus += 8;
+    if (SN48 >= 12) push(1, `${in1(SN48)} in of new snow in 48 h; new slabs may be more reactive than the rating suggests`);
+    else if (SN48 >= 4) push(-1, `${in1(SN48)} in of new snow in the last 48 h`);
+    if (SN48 >= 3 && maxBack(wx.WG, 24) >= 25) push(1, `New snow with gusts to ${Math.round(maxBack(wx.WG, 24))} mph in the last day; fresh wind slabs likely on lee slopes`);
+    if (!zone) push(1, 'Outside avalanche forecast coverage');
+    else if (zone.offSeason || !(zone.danger >= 1)) push(1, `No avalanche danger rating for this area today${zone.offSeason ? ' (center is off-season)' : ''}`);
+    else {
+      const lv = avyMatrix(zone.danger, it.ates);
+      push(lv, `Avalanche danger ${zone.danger} (${DANGER[zone.danger]}) in ${it.unrated ? 'unrated' : it.ates} terrain`);
+      if (ctx.zoneValidThrough && date > ctx.zoneValidThrough) push(1, `Avalanche forecast is only valid through ${ctx.zoneValidThrough}; check the new one before you go`);
+    }
+    if (it.unrated) push(1, 'Terrain not rated (OpenStreetMap route); treated as challenging terrain');
+  }
+  if (it.source === 'osm' && it.type !== 'ski') push(0, 'From OpenStreetMap; details not verified');
+
+  const verdict = Math.max(0, ...flags.map(f => f.level));
+  const blk = best ? hours.slice(best.s, best.s + best.k) : [];
+  const summary = blk.length ? {
+    tMin: min(blk.map(h => h.T)), tMax: max(blk.map(h => h.T)),
+    rockMin: it.type === 'climb' ? min(blk.map(h => h.rockT)) : null, rockMax: it.type === 'climb' ? max(blk.map(h => h.rockT)) : null,
+    gMax: max(blk.map(h => h.WG)), pSum: blk.reduce((a, h) => a + h.P, 0), ppMax: max(blk.map(h => h.PP)),
+  } : null;
+  flags.sort((a, b) => (b.level === -1 ? -0.5 : b.level) - (a.level === -1 ? -0.5 : a.level));
+  return {
+    item: it, verdict, comfort: (best ? best.com : 0) + bonus, hours, flags, summary, availMin, onS, onE,
+    best: best ? {start: hours[best.s].t, end: hours[best.s + best.k - 1].t + H} : null,
+    sunrise: riseMs, sunset: setMs,
+  };
+}
+
+return {CATALOG, DANGER, ASPECTS, haversineKm, estDriveMin, parseLocal, fmtClock, fmtDur, normWx, findZone, avyMatrix, prepare, osmToItems, evaluate, sunFactor};
+})();
+</script>
+
+<script id="ui">
+(() => {
+'use strict';
+const E = Engine;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H = 3600000;
+const STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+const ABBR = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
+const ACT = {run:'Trail runs', climb:'Climbs', ski:'Ski lines'};
+const VERDICT = ['Go', 'Caution', 'No-go'];
+const state = {req:0, avy:null, picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
+
+/* ---------- storage (best effort) ---------- */
+const store = {
+  get(){ try { return JSON.parse(localStorage.getItem('ww.prefs') || '{}'); } catch { return {}; } },
+  set(v){ try { localStorage.setItem('ww.prefs', JSON.stringify(v)); } catch {} },
+};
+
+/* ---------- network ---------- */
+// Network failures (blocked, offline, timed out) carry .network and .host so the
+// message can say "couldn't reach X" instead of pretending the place doesn't exist.
+async function getJSON(url, opts = {}, ms = 20000){
+  const ctl = new AbortController();
+  const outer = opts.signal;
+  const onOuter = () => ctl.abort();
+  if (outer){ if (outer.aborted) ctl.abort(); else outer.addEventListener('abort', onOuter); }
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, ms);
+  const host = (() => { try { return new URL(url).host; } catch { return url; } })();
+  try {
+    const r = await fetch(url, {...opts, signal: ctl.signal});
+    if (!r.ok){
+      let reason = '';
+      try { const j = await r.json(); reason = j.reason || j.message || ''; } catch {}
+      const err = new Error(`${host} answered ${r.status}${reason ? ': ' + reason : ''}`);
+      err.host = host; throw err;
+    }
+    return await r.json();
+  } catch (e){
+    if (e.host) throw e;
+    if (outer && outer.aborted){ const a = new Error('aborted'); a.aborted = true; throw a; }
+    const err = new Error(timedOut ? `${host} timed out` : `couldn't reach ${host}`);
+    err.network = true; err.host = host; throw err;
+  } finally {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', onOuter);
+  }
+}
+const NET_HELP = 'This page calls weather, routing and avalanche services straight from your browser, so it needs a normal browser tab with internet access. Some in-app file previews block those requests; open it in Safari or Chrome instead.';
+
+// Place search for the dropdown: Open-Meteo's geocoder (towns, peaks, parks) plus
+// Photon (OpenStreetMap: trailheads, small places, addresses). Either can fail alone.
+const GN_KIND = {PK:'Peak', PKS:'Peaks', MT:'Mountain', MTS:'Mountains', PASS:'Pass', LK:'Lake', RSV:'Reservoir', PRK:'Park', RES:'Reserve', CMP:'Campground', ADM1:'State', ADM2:'County', AIRP:'Airport', CNYN:'Canyon', VAL:'Valley'};
+function photonKind(p){
+  const v = p.osm_value || '', k = p.osm_key || '';
+  if (k === 'place' && /^(city|town|village|hamlet|locality|suburb|neighbourhood|isolated_dwelling)$/.test(v)) return '';
+  const map = {peak:'Peak', trailhead:'Trailhead', parking:'Parking', mountain_pass:'Pass', saddle:'Saddle', nature_reserve:'Reserve', protected_area:'Protected area', national_park:'Park', park:'Park', cliff:'Cliff', climbing:'Climbing', lake:'Lake', water:'Water', camp_site:'Campground', state:'State', county:'County', house:'Address', residential:'Street', track:'Track', path:'Trail'};
+  return map[v] || (k === 'highway' ? 'Road' : '');
+}
+async function searchPlaces(text, signal){
+  const q = text.trim();
+  const coord = q.match(/^(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)$/);
+  if (coord){
+    const lat = +coord[1], lon = +coord[2];
+    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
+      return {items:[{name:`${lat.toFixed(4)}, ${lon.toFixed(4)}`, sub:'Coordinates', kind:'', label:`${lat.toFixed(4)}, ${lon.toFixed(4)}`, lat, lon}], netFail:false};
+  }
+  const parts = q.split(',').map(s => s.trim()).filter(Boolean);
+  const name = parts[0] || q;
+  const hintRaw = parts.slice(1).join(' ');
+  const hint = hintRaw ? (STATES[hintRaw.toUpperCase()] || hintRaw).toLowerCase() : '';
+  const near = state.picked || {lat:39.7555, lon:-105.2211};
+  const [om, ph] = await Promise.allSettled([
+    getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10&language=en&format=json`, {signal}, 8000),
+    getJSON(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&lang=en&lat=${near.lat.toFixed(3)}&lon=${near.lon.toFixed(3)}`, {signal}, 8000),
+  ]);
+  if ([om, ph].some(r => r.status === 'rejected' && r.reason && r.reason.aborted)){ const a = new Error('aborted'); a.aborted = true; throw a; }
+  const items = [];
+  const matches = vals => !hint || vals.some(x => x && String(x).toLowerCase() === hint);
+  if (om.status === 'fulfilled'){
+    for (const r of om.value.results || []){
+      const us = r.country_code === 'US';
+      const st = r.admin1 ? (us ? (ABBR[r.admin1] || r.admin1) : r.admin1) : '';
+      items.push({name: r.name, sub: [r.admin2, r.admin1, us ? null : r.country].filter(Boolean).join(', '),
+        label: [r.name, st].filter(Boolean).join(', '), lat: r.latitude, lon: r.longitude,
+        kind: GN_KIND[r.feature_code] || '', hit: matches([r.admin1, r.country, r.country_code])});
+    }
+  }
+  if (ph.status === 'fulfilled'){
+    for (const f of ph.value.features || []){
+      const p = f.properties || {}, g = f.geometry;
+      if (!p.name || !g || !g.coordinates) continue;
+      const [lon, lat] = g.coordinates;
+      const us = (p.countrycode || '').toUpperCase() === 'US';
+      const st = us ? (ABBR[p.state] || p.state) : p.state;
+      const town = p.city && p.city !== p.name ? p.city : '';
+      items.push({name: p.name, sub: [town || p.county, p.state, us ? null : p.country].filter(Boolean).join(', '),
+        label: [p.name, town, st].filter(Boolean).join(', '), lat, lon, kind: photonKind(p),
+        hit: matches([p.state, p.country, p.countrycode, p.city, p.county])});
+    }
+  }
+  // Drop near-duplicates (same name within 3 km). Rank: typed state/country match, then
+  // within ~250 km of your last place, then the geocoders' own order.
+  const out = [];
+  for (const it of items){
+    if (out.some(o => o.name.toLowerCase() === it.name.toLowerCase() && E.haversineKm(o.lat, o.lon, it.lat, it.lon) < 3)) continue;
+    it.score = (it.hit ? 2 : 0) + (E.haversineKm(near.lat, near.lon, it.lat, it.lon) < 250 ? 1 : 0);
+    out.push(it);
+  }
+  out.sort((a, b) => b.score - a.score);
+  const netFail = om.status === 'rejected' && ph.status === 'rejected';
+  return {items: out.slice(0, 8), netFail, err: netFail ? (om.reason || ph.reason) : null};
+}
+
+async function resolveOrigin(text){
+  if (state.picked && text === state.picked.label) return state.picked;
+  const r = await searchPlaces(text);
+  if (r.items.length) return r.items[0];
+  if (r.netFail){ const e = new Error(`Couldn't reach the place search (${r.err && r.err.host || 'geocoder'}).`); e.network = true; throw e; }
+  throw new Error(`No place matches "${text}". Pick one from the list as you type, or enter coordinates like 39.66, -105.25.`);
+}
+
+const HOURLY = 'temperature_2m,apparent_temperature,precipitation,rain,showers,snowfall,precipitation_probability,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,snow_depth';
+function wxURL(points, tz, d0, d1, elevFt){
+  const p = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(4)).join(','),
+    longitude: points.map(p => p.lon.toFixed(4)).join(','),
+    hourly: HOURLY, daily: 'sunrise,sunset', timezone: tz, start_date: d0, end_date: d1,
+    temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', precipitation_unit: 'inch',
+  });
+  if (elevFt) p.set('elevation', elevFt.map(e => Math.round(e*0.3048)).join(','));
+  return 'https://api.open-meteo.com/v1/forecast?' + p.toString().replace(/%2C/g, ',');
+}
+async function weatherFor(items, tz, d0, d1, withElev){
+  const out = new Map(), B = 40, jobs = [];
+  for (let i = 0; i < items.length; i += B){
+    const chunk = items.slice(i, i + B);
+    jobs.push(getJSON(wxURL(chunk.map(it => it.wxPt), tz, d0, d1, withElev ? chunk.map(it => it.wxElevFt || 0) : null), {}, 25000)
+      .then(j => (Array.isArray(j) ? j : [j]).forEach((r, k) => out.set(chunk[k].id, E.normWx(r)))));
+  }
+  await Promise.all(jobs);
+  return out;
+}
+
+async function driveTimes(origin, items){
+  const res = new Map(); let routed = 0;
+  for (let i = 0; i < items.length; i += 80){
+    const chunk = items.slice(i, i + 80);
+    const coords = [origin, ...chunk.map(it => it.drivePt)].map(p => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+    try {
+      const j = await getJSON(`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=duration`, {}, 15000);
+      if (j.code !== 'Ok') throw new Error(j.code);
+      chunk.forEach((it, k) => { const s = j.durations[0][k + 1]; if (s != null){ res.set(it.id, {min: Math.round(s/60), est: false}); routed++; } });
+    } catch {}
+    chunk.forEach(it => {
+      if (!res.has(it.id)) res.set(it.id, {min: E.estDriveMin(E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon)), est: true});
+    });
+  }
+  return {res, routed};
+}
+
+async function getAvy(){
+  if (state.avy && Date.now() - state.avy.at < 30*60000) return state.avy.data;
+  const j = await getJSON('https://api.avalanche.org/v2/public/products/map-layer', {}, 20000);
+  state.avy = {at: Date.now(), data: j};
+  return j;
+}
+
+async function getOsm(origin, radiusKm){
+  const a = `(around:${Math.round(radiusKm*1000)},${origin.lat.toFixed(4)},${origin.lon.toFixed(4)})`;
+  const q = `[out:json][timeout:25];(relation["route"~"^(hiking|foot|running)$"]["name"]${a};nwr["climbing"~"^(crag|area|boulder)$"]["name"]${a};nwr["piste:type"~"^(skitour|backcountry)$"]["name"]${a};);out tags center 600;`;
+  let last;
+  for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']){
+    try { return await getJSON(ep, {method:'POST', body: new URLSearchParams({data: q})}, 30000); } catch (e){ last = e; }
+  }
+  throw last;
+}
+
+/* ---------- date / time ---------- */
+const pad = n => String(n).padStart(2, '0');
+function nowIn(tz){
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).formatToParts(new Date()).map(x => [x.type, x.value]));
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
+  } catch { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()); }
+}
+const ymd = ms => new Date(ms).toISOString().slice(0, 10);
+const hm = ms => new Date(ms).toISOString().slice(11, 16);
+function zoneDate(utcStr, tz){
+  if (!utcStr) return null;
+  try { return new Date(utcStr.endsWith('Z') ? utcStr : utcStr + 'Z').toLocaleDateString('en-CA', {timeZone: tz}); } catch { return null; }
+}
+function defaults(){
+  const n = nowIn(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const d = new Date(n);
+  let day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  let start = Math.ceil(n/(15*60000))*15*60000;
+  if (d.getUTCHours() >= 16){ day += 24*H; start = day + 8*H; }
+  else if (d.getUTCHours() < 6) start = day + 7*H;
+  let end = Math.min(start + 5*H, day + 20*H);
+  if (end - start < 2*H) end = start + 2*H;
+  $('#date').value = ymd(day); $('#t0').value = hm(start); $('#t1').value = hm(end);
+}
+
+/* ---------- progress ---------- */
+const STEP_NAMES = {loc:'Location', drive:'Drive times', wx:'Weather', avy:'Avalanche', osm:'OpenStreetMap'};
+function steps(st){
+  $('#steps').innerHTML = Object.entries(st).map(([k, v]) => `<li class="${v.s}">${esc(STEP_NAMES[k])}${v.note ? ': ' + esc(v.note) : ''}</li>`).join('');
+}
+
+/* ---------- main ---------- */
+function readForm(){
+  const v = id => $(id).value, c = id => $(id).checked;
+  return {
+    loc: v('#loc').trim(), date: v('#date'), t0: v('#t0'), t1: v('#t1'),
+    drive: +v('#drive'), d2d: c('#d2d'), osm: c('#osm'), tech: +v('#tech'),
+    acts: ['run', 'climb', 'ski'].filter(a => c('#a-' + a)),
+    styles: ['sport', 'trad', 'multi', 'boulder'].filter(s => c('#s-' + s)),
+  };
+}
+function saveForm(f){ store.set({loc: f.loc, origin: state.picked, drive: f.drive, d2d: f.d2d, osm: f.osm, tech: f.tech, acts: f.acts, styles: f.styles}); }
+function loadForm(){
+  const p = store.get();
+  if (p.loc){
+    $('#loc').value = p.loc;
+    const o = p.origin;
+    state.picked = o && o.label === p.loc && isFinite(o.lat) && isFinite(o.lon) ? o : null;
+  }
+  if (p.drive) $('#drive').value = p.drive;
+  if (typeof p.d2d === 'boolean') $('#d2d').checked = p.d2d;
+  if (typeof p.osm === 'boolean') $('#osm').checked = p.osm;
+  if (p.tech) $('#tech').value = p.tech;
+  if (Array.isArray(p.acts)) ['run', 'climb', 'ski'].forEach(a => $('#a-' + a).checked = p.acts.includes(a));
+  if (Array.isArray(p.styles)) ['sport', 'trad', 'multi', 'boulder'].forEach(s => $('#s-' + s).checked = p.styles.includes(s));
+}
+function showErr(msg){ const e = $('#err'); e.textContent = msg || ''; e.hidden = !msg; }
+
+function keep(it, f){
+  if (!f.acts.includes(it.type)) return false;
+  if (it.type === 'run' && it.tech && it.tech > f.tech) return false;
+  if (it.type === 'climb' && !(it.styles || []).some(s => f.styles.includes(s))) return false;
+  return true;
+}
+
+async function run(){
+  const f = readForm();
+  showErr('');
+  if (!f.loc) return showErr('Enter a starting point.');
+  if (!f.acts.length) return showErr('Pick at least one activity.');
+  if (!f.date || !f.t0 || !f.t1) return showErr('Set a date, start and end time.');
+  const S = Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10), +f.t0.slice(0,2), +f.t0.slice(3,5));
+  let Eend = Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10), +f.t1.slice(0,2), +f.t1.slice(3,5));
+  if (Eend <= S) return showErr('The end time has to be after the start time.');
+  const my = ++state.req;
+  const live = () => my === state.req;
+  const st = {loc:{s:'run'}, drive:{s:''}, wx:{s:''}, avy:{s:''}};
+  if (f.osm) st.osm = {s:''};
+  steps(st);
+  $('#go').disabled = true;
+  try {
+    const origin = await resolveOrigin(f.loc);
+    if (!live()) return;
+    // Show exactly which place the results are for.
+    state.picked = {label: origin.label, lat: origin.lat, lon: origin.lon};
+    $('#loc').value = f.loc = origin.label;
+    saveForm(f);
+    const d0 = ymd(Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10)) - 2*24*H);
+    // Origin forecast: gives the time zone and the home-base summary.
+    const homeRaw = await getJSON(wxURL([origin], 'auto', d0, f.date, null), {}, 20000);
+    const home = E.normWx(homeRaw);
+    const tz = home.tz || 'auto';
+    st.loc = {s:'ok', note: origin.label}; steps(st);
+
+    // Clip a window that has already started.
+    const now = nowIn(tz);
+    let S2 = S, clipped = false;
+    if (S < now && Eend > now){ S2 = Math.ceil(now/(15*60000))*15*60000; clipped = true; }
+    if (Eend <= now) throw new Error('That window has already passed. Pick a later time or date.');
+    const daysOut = (Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10)) - Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate()))/(24*H);
+    if (daysOut > 14) throw new Error('Forecasts only reach about two weeks out.');
+
+    const avyP = getAvy().then(d => ({ok:true, d}), e => ({ok:false, e}));
+    const osmRadius = Math.min(f.drive*1.1, 170);
+    const osmP = f.osm ? getOsm(origin, osmRadius).then(d => ({ok:true, d}), e => ({ok:false, e})) : null;
+    if (f.osm){ st.osm = {s:'run'}; }
+    st.avy = {s:'run'}; st.drive = {s:'run'}; steps(st);
+
+    const ctxBase = {origin, tz, f, S: S2, E: Eend, d0, home, clipped};
+    const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
+    const results = await scoreItems(catalog, ctxBase, avyP, st, live, true);
+    if (!live()) return;
+    state.last = {ctx: ctxBase, results, osmCount: 0};
+    render(state.last);
+
+    if (osmP){
+      const o = await osmP;
+      if (!live()) return;
+      if (!o.ok){ st.osm = {s:'fail', note: 'unavailable (' + (o.e.message || 'error') + ')'}; steps(st); return; }
+      const extra = E.osmToItems(o.d.elements, catalog).map(E.prepare).filter(it => keep(it, f));
+      // Keep the nearest few per activity so the extra calls stay light.
+      const byType = {};
+      extra.forEach(it => { it._km = E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon); (byType[it.type] ||= []).push(it); });
+      const picked = Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
+      if (!picked.length){ st.osm = {s:'ok', note:'nothing new nearby'}; steps(st); return; }
+      st.osm = {s:'run', note:`${picked.length} finds`}; steps(st);
+      const more = await scoreItems(picked, ctxBase, avyP, null, live, false);
+      if (!live()) return;
+      state.last.results = results.concat(more);
+      state.last.osmCount = more.length;
+      st.osm = {s:'ok', note:`${more.length} added`}; steps(st);
+      render(state.last);
+    }
+  } catch (e){
+    if (!live()) return;
+    for (const k in st) if (st[k].s === 'run') st[k] = {s:'fail'};
+    steps(st);
+    const msg = (e.message || String(e)).replace(/\.$/, '');
+    showErr(e.network ? `${cap(msg)}. ${NET_HELP}` : msg + '.');
+  } finally {
+    if (live()) $('#go').disabled = false;
+  }
+}
+
+async function scoreItems(items, cb, avyP, st, live, withElev){
+  const {origin, f, tz, d0, S, E: Eend} = cb;
+  // Straight-line prefilter: nothing farther than ~68 mph as the crow flies.
+  const pre = items.filter(it => E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon) <= f.drive/60*110);
+  const dt = await driveTimes(origin, pre);
+  if (!live()) return [];
+  const inRange = pre.filter(it => dt.res.get(it.id).min <= f.drive);
+  if (st){
+    st.drive = {s: dt.routed === pre.length ? 'ok' : 'warn', note: dt.routed === pre.length ? `${inRange.length} within ${E.fmtDur(f.drive)}` : `${inRange.length} in range, some estimated`};
+    st.wx = {s:'run'}; steps(st);
+  }
+  if (!inRange.length){ if (st){ st.wx = {s:'ok', note:'nothing to fetch'}; steps(st); } }
+  const wx = inRange.length ? await weatherFor(inRange, tz, d0, f.date, withElev) : new Map();
+  if (!live()) return [];
+  if (st){ st.wx = {s:'ok'}; steps(st); }
+  const avy = await avyP;
+  if (st){ st.avy = avy.ok ? {s:'ok'} : {s:'fail', note: 'unavailable'}; steps(st); }
+  cb.avyOk = avy.ok;
+  const month = +f.date.slice(5,7);
+  return inRange.map(it => {
+    const w = wx.get(it.id);
+    if (!w) return null;
+    if (it.source === 'osm' && w.elevationFt) it.elevFt = w.elevationFt;
+    const needZone = it.type === 'ski' || it.winterAvy;
+    const zone = needZone && avy.ok ? E.findZone(avy.d, it.wxPt.lat, it.wxPt.lon) : null;
+    const r = E.evaluate(it, {wx: w, S, E: Eend, d2d: f.d2d, drive: dt.res.get(it.id).min, zone, date: f.date, month,
+      zoneValidThrough: zone ? zoneDate(zone.end, tz) : null});
+    if (needZone && !avy.ok){
+      r.flags.unshift({level: 1, text: 'Avalanche forecast could not be loaded; check it directly'});
+      r.verdict = Math.max(r.verdict, 1);
+    }
+    r.drive = dt.res.get(it.id); r.zone = zone;
+    return r;
+  }).filter(Boolean);
+}
+
+/* ---------- rendering ---------- */
+function rose(aspects){
+  const c = 15, r = 13, mixed = aspects.includes('mixed');
+  const paths = E.ASPECTS.map((a, i) => {
+    const a0 = (i*45 - 22.5 - 90)*Math.PI/180, a1 = (i*45 + 22.5 - 90)*Math.PI/180;
+    const on = mixed || aspects.includes(a);
+    return `<path d="M${c},${c} L${(c + r*Math.cos(a0)).toFixed(2)},${(c + r*Math.sin(a0)).toFixed(2)} A${r},${r} 0 0 1 ${(c + r*Math.cos(a1)).toFixed(2)},${(c + r*Math.sin(a1)).toFixed(2)} Z" class="${on ? (mixed ? 'on mixed' : 'on') : ''}"/>`;
+  }).join('');
+  return `<svg class="rose" viewBox="0 0 30 30" width="28" height="28" aria-hidden="true">${paths}</svg>`;
+}
+const aspectText = a => a.includes('mixed') ? 'Mixed aspects' : a.join(', ') + '-facing';
+const n0 = v => Math.round(v).toLocaleString('en-US');
+const TECH = {1:'Smooth', 2:'Moderate', 3:'Technical'};
+const ATES = {simple:'Simple', challenging:'Challenging', complex:'Complex'};
+
+function dangerChip(z){
+  if (!z) return '<span class="danger d0"><b>?</b> No forecast area</span>';
+  const n = z.danger >= 1 ? z.danger : 0;
+  return `<span class="danger d${n}"><b>${n || '–'}</b> ${esc(n ? E.DANGER[n] : 'No rating')}</span>`;
+}
+
+function facts(r){
+  const it = r.item, out = [];
+  if (it.type === 'run'){
+    if (it.miles) out.push(`<span><span class="num">${it.miles.toFixed(1)}</span> mi</span>`);
+    if (it.gain) out.push(`<span><span class="num">${n0(it.gain)}</span> ft gain</span>`);
+    if (it.highElev) out.push(`<span><span class="k">High</span> <span class="num">${n0(it.highElev)}</span> ft</span>`);
+    if (it.tech) out.push(`<span>${TECH[it.tech]}</span>`);
+  } else if (it.type === 'climb'){
+    out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
+    out.push(`<span>${esc(cap(it.rock || ''))}</span>`);
+    out.push(`<span>${esc((it.styles || []).map(s => s === 'multi' ? 'multipitch' : s).join(', '))}</span>`);
+    out.push(`<span><span class="k">Approach</span> <span class="num">${it.approach}</span> min</span>`);
+  } else {
+    out.push(`<span class="aspect">${rose(it.aspects)}${esc(aspectText(it.aspects))}</span>`);
+    if (it.top) out.push(`<span><span class="num">${n0(it.top)}</span>→<span class="num">${n0(it.bottom)}</span> ft</span>`);
+    if (it.top && it.thElev) out.push(`<span><span class="num">${n0(Math.max(0, it.top - it.thElev))}</span> ft up</span>`);
+    out.push(`<span><span class="k">ATES</span> ${esc(it.unrated ? 'unrated' : ATES[it.ates])}</span>`);
+    out.push(dangerChip(r.zone));
+  }
+  if (it.type !== 'ski' && it.elevFt && it.source === 'osm') out.push(`<span><span class="num">${n0(it.elevFt)}</span> ft</span>`);
+  out.push(`<span><span class="k">Time</span> <span class="num">~${E.fmtDur(it.dur)}</span></span>`);
+  return out.join('');
+}
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+
+function strip(r){
+  if (!r.hours.length) return '';
+  const cells = r.hours.map(h => `<i class="l${h.level}${h.best ? ' best' : ''}" title="${esc(E.fmtClock(h.t))}: ${Math.round(h.T)}°F, gusts ${Math.round(h.WG)} mph, ${h.PP}% precip"></i>`).join('');
+  const first = r.hours[0].t, last = r.hours[r.hours.length - 1].t + H;
+  const best = r.best ? `Best ${E.fmtClock(r.best.start)}–${E.fmtClock(r.best.end)}` : '';
+  return `<div class="strip-wrap"><div class="strip" role="img" aria-label="Hourly conditions from ${esc(E.fmtClock(first))} to ${esc(E.fmtClock(last))}. ${esc(best)}">${cells}</div>
+    <div class="strip-l"><span>${esc(E.fmtClock(first))}</span><span class="b">${esc(best)}</span><span>${esc(E.fmtClock(last))}</span></div></div>`;
+}
+
+function wxLine(r){
+  const s = r.summary; if (!s) return '';
+  const parts = [];
+  parts.push(`<span class="num">${Math.round(s.tMin)}${Math.round(s.tMax) !== Math.round(s.tMin) ? '–' + Math.round(s.tMax) : ''}°F</span> air`);
+  if (r.item.type === 'climb') parts.push(`rock ~<span class="num">${Math.round(s.rockMin)}–${Math.round(s.rockMax)}°F</span>`);
+  parts.push(`gusts <span class="num">${Math.round(s.gMax)}</span> mph`);
+  parts.push(s.pSum > 0.005 ? `<span class="num">${s.pSum.toFixed(2)}</span> in precip` : (s.ppMax >= 20 ? `dry, <span class="num">${s.ppMax}%</span> chance` : 'dry'));
+  return `<p class="wx">${parts.join(' · ')}</p>`;
+}
+
+function hourlyTable(r){
+  if (!r.hours.length) return '';
+  const climb = r.item.type === 'climb', ski = r.item.type === 'ski';
+  const rows = r.hours.map(h => `<tr><td><span class="dot" style="background:var(--cell-${['go','caution','nogo'][h.level]})"></span>${esc(E.fmtClock(h.t))}</td><td>${Math.round(h.T)}°</td><td>${Math.round(h.AT)}°</td>${climb ? `<td>${Math.round(h.rockT)}°</td>` : ''}<td>${Math.round(h.WS)}/${Math.round(h.WG)}</td><td>${h.PP}%</td><td>${h.P ? h.P.toFixed(2) : '0'}</td>${ski ? `<td>${h.SN ? h.SN.toFixed(1) : '0'}</td>` : ''}<td>${h.CC}%</td></tr>`).join('');
+  return `<details class="hourly"><summary>Hour by hour</summary><div class="tbl"><table>
+    <thead><tr><th>Hour</th><th>Air</th><th>Feels</th>${climb ? '<th>Rock</th>' : ''}<th>Wind/gust mph</th><th>Precip %</th><th>Precip in</th>${ski ? '<th>Snow in</th>' : ''}<th>Cloud</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></details>`;
+}
+
+function links(r){
+  const it = r.item, out = [];
+  out.push(`<a href="https://www.google.com/maps/dir/?api=1&destination=${it.drivePt.lat},${it.drivePt.lon}" target="_blank" rel="noopener">Directions</a>`);
+  if (r.zone && r.zone.link && /^https:\/\//.test(r.zone.link)) out.push(`<a href="${esc(r.zone.link)}" target="_blank" rel="noopener">${esc(r.zone.centerId || 'Avalanche')} forecast</a>`);
+  if (it.src) out.push(`<a href="${esc(it.src)}" target="_blank" rel="noopener">Route info</a>`);
+  if (it.osmUrl) out.push(`<a href="${esc(it.osmUrl)}" target="_blank" rel="noopener">OpenStreetMap</a>`);
+  if (it.type === 'climb' && it.source === 'catalog') out.push(`<a href="https://www.mountainproject.com/search?q=${encodeURIComponent(it.name.split(':').pop().trim())}" target="_blank" rel="noopener">Mountain Project</a>`);
+  return `<div class="links">${out.join('')}</div>`;
+}
+
+function card(r){
+  const it = r.item;
+  const lis = r.flags.map(x => `<li class="${x.level === -1 ? 'lp' : 'l' + x.level}">${esc(x.text)}</li>`).join('');
+  return `<article class="card v${r.verdict}">
+    <div class="card-h"><div>
+      <h3>${esc(it.name)}</h3>
+      <p class="meta">${esc(it.area || '')}${it.area ? ' · ' : ''}<span class="drv">${E.fmtDur(r.drive.min)}</span> drive${r.drive.est ? ' (est.)' : ''}${it.source === 'osm' ? ' · <span class="tag">OSM</span>' : ''}</p>
+    </div><span class="pill l${r.verdict}">${VERDICT[r.verdict]}</span></div>
+    <div class="facts">${facts(r)}</div>
+    ${strip(r)}
+    ${wxLine(r)}
+    ${lis ? `<ul class="flags">${lis}</ul>` : ''}
+    ${it.note ? `<p class="note">${esc(it.note)}</p>` : ''}
+    ${links(r)}
+    ${hourlyTable(r)}
+  </article>`;
+}
+
+function homeBlock(ctx){
+  const w = ctx.home, S = ctx.S, Eend = ctx.E;
+  const idx = w.t.map((t, i) => (t >= Math.floor(S/H)*H && t < Eend) ? i : -1).filter(i => i >= 0 && w.T[i] != null);
+  if (!idx.length) return '';
+  const T = idx.map(i => w.T[i]), G = idx.map(i => w.WG[i] || 0), P = idx.reduce((a, i) => a + (w.P[i] || 0), 0);
+  const di = w.days.indexOf(ctx.f.date);
+  const sun = di >= 0 ? `Sun ${E.fmtClock(w.sunrise[di])}–${E.fmtClock(w.sunset[di])}.` : '';
+  return `<div><h2>At ${esc(ctx.origin.label)}</h2><p><span class="num">${Math.round(Math.min(...T))}–${Math.round(Math.max(...T))}°F</span>, gusts to <span class="num">${Math.round(Math.max(...G))}</span> mph, ${P > 0.005 ? `<span class="num">${P.toFixed(2)}</span> in precip` : 'dry'} from ${E.fmtClock(S)} to ${E.fmtClock(Eend)}. ${sun}</p>${ctx.clipped ? `<p class="hint">Your window had already started, so it begins now.</p>` : ''}</div>`;
+}
+
+function zonesBlock(results, ctx){
+  const zones = new Map();
+  results.forEach(r => { if (r.zone) zones.set(r.zone.id ?? r.zone.name, r.zone); });
+  if (!ctx.f.acts.includes('ski') && !results.some(r => r.item.winterAvy)) return '';
+  let body;
+  if (!ctx.avyOk) body = '<p>The avalanche forecast could not be loaded. Ski lines are marked caution until you check it directly.</p>';
+  else if (!zones.size) body = '<p>None of the ski options in range fall inside a forecast area.</p>';
+  else body = `<ul class="zones">${[...zones.values()].sort((a, b) => (b.danger || 0) - (a.danger || 0)).map(z =>
+      `<li>${dangerChip(z)} <span>${esc(z.center || z.name)}</span>${z.link && /^https:\/\//.test(z.link) ? ` <a href="${esc(z.link)}" target="_blank" rel="noopener">Forecast</a>` : ''}</li>`).join('')}</ul>
+      <p class="hint">Headline (highest) rating for each forecast area your lines fall in.</p>`;
+  return `<div><h2>Avalanche</h2>${body}</div>`;
+}
+
+function render(state){
+  const {ctx, results} = state;
+  const f = ctx.f;
+  const byAct = {};
+  f.acts.forEach(a => byAct[a] = []);
+  results.forEach(r => (byAct[r.item.type] ||= []).push(r));
+  for (const a in byAct) byAct[a].sort((x, y) => x.verdict - y.verdict || y.comfort - x.comfort || x.drive.min - y.drive.min);
+
+  const jump = f.acts.map(a => {
+    const g = byAct[a].filter(r => r.verdict === 0).length;
+    return `<a href="#sec-${a}">${ACT[a]} <b>${g} go</b></a>`;
+  }).join('');
+
+  const sections = f.acts.map(a => {
+    const list = byAct[a];
+    const ok = list.filter(r => r.verdict < 2), out = list.filter(r => r.verdict === 2);
+    const g = ok.filter(r => r.verdict === 0).length, c = ok.length - g;
+    const cards = ok.length ? `<div class="list">${ok.map(card).join('')}</div>`
+      : `<div class="empty">${list.length ? 'Nothing works in this window. The ruled-out list says why.' : `Nothing within ${E.fmtDur(f.drive)}. Try a longer drive${f.osm ? '' : ' or add OpenStreetMap finds'}.`}</div>`;
+    const ruled = out.length ? `<details class="ruled"><summary>Ruled out (${out.length})</summary><ul>${out.map(r => {
+      const why = r.flags.find(x => x.level === 2);
+      return `<li><b>${esc(r.item.name)}</b> <span>· ${E.fmtDur(r.drive.min)} · ${esc(why ? why.text : '')}</span></li>`;
+    }).join('')}</ul></details>` : '';
+    return `<section class="act" id="sec-${a}"><h2>${ACT[a]} <small>${g} go · ${c} caution · ${out.length} ruled out</small></h2>${cards}${ruled}</section>`;
+  }).join('');
+
+  $('#out').innerHTML = `<div class="band">${homeBlock(ctx)}${zonesBlock(results, ctx)}</div><nav class="jump" aria-label="Activities">${jump}</nav>${sections}`;
+}
+
+/* ---------- masthead contours (index contour every 5th line) ---------- */
+function drawTopo(){
+  const c = $('#topo'); if (!c) return;
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  c.width = w*dpr; c.height = h*dpr;
+  const g = c.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--contour').trim() || 'rgba(150,104,66,.4)';
+  const peaks = [{x: w*0.86, y: h*0.30, s: 1.05, ph: 0}, {x: w*0.60, y: h*1.15, s: 0.85, ph: 2.1}, {x: w*1.05, y: h*1.05, s: 0.7, ph: 4.2}];
+  for (const p of peaks){
+    for (let k = 1; k <= 22; k++){
+      const r = 11*k*p.s;
+      g.beginPath();
+      for (let a = 0; a <= Math.PI*2 + 0.01; a += 0.04){
+        const rr = r*(1 + 0.11*Math.sin(3*a + k*0.33 + p.ph) + 0.05*Math.sin(7*a - k*0.55) + 0.025*Math.sin(13*a + k));
+        const x = p.x + rr*Math.cos(a)*1.25, y = p.y + rr*Math.sin(a)*0.8;
+        a === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+      }
+      g.closePath();
+      g.lineWidth = k % 5 === 0 ? 1.5 : 0.7;
+      g.stroke();
+    }
+  }
+  // Fade the contours out behind the title and subtitle.
+  g.globalCompositeOperation = 'destination-out';
+  const fade = g.createLinearGradient(0, 0, w, 0);
+  fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(w < 600 ? 0.55 : 0.45, 'rgba(0,0,0,.85)'); fade.addColorStop(w < 600 ? 0.9 : 0.75, 'rgba(0,0,0,0)');
+  g.fillStyle = fade; g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+}
+
+/* ---------- wiring ---------- */
+function syncLabels(){
+  const d2d = $('#d2d').checked;
+  $('#t0l').textContent = d2d ? 'Leave' : 'Start';
+  $('#t1l').textContent = d2d ? 'Back by' : 'End';
+  $('#driveOut').textContent = E.fmtDur(+$('#drive').value);
+  const styles = ['sport', 'trad', 'multi', 'boulder'].filter(s => $('#s-' + s).checked).length;
+  $('#moreSum').textContent = [
+    d2d ? 'door to door' : 'times on site',
+    $('#tech').selectedOptions[0].textContent.toLowerCase(),
+    styles === 4 ? 'all climbing styles' : `${styles} climbing style${styles === 1 ? '' : 's'}`,
+    $('#osm').checked ? 'OSM on' : 'OSM off',
+  ].join(' · ');
+}
+loadForm(); defaults(); syncLabels();
+$('#drive').addEventListener('input', syncLabels);
+$('#q').addEventListener('change', syncLabels);
+$('#q').addEventListener('submit', e => { e.preventDefault(); run(); });
+$('#geo').addEventListener('click', () => {
+  if (!navigator.geolocation) return showErr('Location is not available in this browser.');
+  $('#geo').disabled = true;
+  navigator.geolocation.getCurrentPosition(p => {
+    const lat = p.coords.latitude, lon = p.coords.longitude;
+    pickPlace({label: `My location (${lat.toFixed(3)}, ${lon.toFixed(3)})`, lat, lon});
+    $('#geo').disabled = false; run();
+  }, err => {
+    $('#geo').disabled = false;
+    showErr(err.code === 1 ? 'Location permission was denied. Type a place instead.' : 'Could not get your location. Type a place instead.');
+  }, {timeout: 10000, maximumAge: 600000});
+});
+
+/* ---------- location dropdown (combobox) ---------- */
+const locIn = $('#loc'), locList = $('#locList');
+let sugg = [], active = -1, searchCtl = null, deb = null;
+function setOpen(o){ locList.hidden = !o; locIn.setAttribute('aria-expanded', String(o)); if (!o) locIn.removeAttribute('aria-activedescendant'); }
+function closeList(){ setOpen(false); active = -1; }
+function showMsg(m){ locList.innerHTML = `<li class="msg" role="presentation">${esc(m)}</li>`; setOpen(true); }
+function drawList(){
+  if (!sugg.length){ closeList(); return; }
+  locList.innerHTML = sugg.map((s, i) => `<li role="option" id="locopt-${i}" data-i="${i}" aria-selected="${i === active}">
+    <span class="nm">${esc(s.name)}${s.kind ? `<span class="kind">${esc(s.kind)}</span>` : ''}</span>${s.sub ? `<span class="sub">${esc(s.sub)}</span>` : ''}</li>`).join('');
+  setOpen(true);
+  if (active >= 0){
+    locIn.setAttribute('aria-activedescendant', `locopt-${active}`);
+    const el = document.getElementById(`locopt-${active}`); if (el) el.scrollIntoView({block:'nearest'});
+  }
+}
+function pickPlace(s){
+  state.picked = {label: s.label, lat: s.lat, lon: s.lon};
+  locIn.value = s.label;
+  sugg = []; closeList(); showErr('');
+}
+locIn.addEventListener('input', () => {
+  const q = locIn.value.trim();
+  if (state.picked && locIn.value !== state.picked.label) state.picked = null;
+  clearTimeout(deb);
+  if (searchCtl) searchCtl.abort();
+  if (q.length < 2){ sugg = []; closeList(); return; }
+  deb = setTimeout(async () => {
+    const ctl = searchCtl = new AbortController();
+    if (!sugg.length) showMsg('Searching…');
+    try {
+      const r = await searchPlaces(q, ctl.signal);
+      if (ctl.signal.aborted) return;
+      sugg = r.items; active = sugg.length ? 0 : -1;
+      if (sugg.length) drawList();
+      else showMsg(r.netFail ? "Can't reach the place search. Check your connection, or open this page in a regular browser tab." : 'No matches. Try a nearby town, or lat, lon.');
+    } catch (e){
+      if (!e.aborted && !ctl.signal.aborted) showMsg("Can't reach the place search right now.");
+    }
+  }, 250);
+});
+locIn.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeList(); return; }
+  if (locList.hidden || !sugg.length) return;
+  if (e.key === 'ArrowDown'){ e.preventDefault(); active = (active + 1) % sugg.length; drawList(); }
+  else if (e.key === 'ArrowUp'){ e.preventDefault(); active = (active - 1 + sugg.length) % sugg.length; drawList(); }
+  else if (e.key === 'Enter' && active >= 0){ e.preventDefault(); pickPlace(sugg[active]); run(); }
+});
+locList.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the input
+locList.addEventListener('click', e => {
+  const li = e.target.closest('li[data-i]');
+  if (li){ pickPlace(sugg[+li.dataset.i]); run(); }
+});
+locIn.addEventListener('focus', () => { locIn.select(); if (sugg.length && !state.picked) drawList(); });
+locIn.addEventListener('blur', () => setTimeout(closeList, 150));
+drawTopo();
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawTopo, 150); });
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawTopo); } catch {}
+if ($('#loc').value.trim()) run();
+})();
+</script>
+</body>
+</html>
