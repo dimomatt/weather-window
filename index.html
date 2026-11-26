@@ -785,7 +785,7 @@ const STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'Californ
 const ABBR = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
 const ACT = {run:'Trail runs', climb:'Climbs', ski:'Ski lines'};
 const VERDICT = ['Go', 'Caution', 'No-go'];
-const state = {req:0, shown:null, picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
+const state = {req:0, shown:null, osmServer:'', picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
 
 /* ---------- storage (best effort) ---------- */
 const store = {
@@ -975,40 +975,67 @@ async function driveTimes(origin, items){
 
 const getAvy = () => memo('avy', 30*MIN, () => getJSON('https://api.avalanche.org/v2/public/products/map-layer', {}, 20000));
 
-// OpenStreetMap finds via Overpass. A bounding box is far cheaper for Overpass than a
-// radius search; distance is filtered afterwards anyway. Results are cached for a week
-// per area, since trail and crag data barely changes.
+// OpenStreetMap finds via Overpass, the public OSM query service.
+// Overpass servers are shared and often overloaded, and their rules ask clients not to run
+// queries in parallel. So: one server at a time, the server's own timeout shorter than ours
+// (an abandoned request would otherwise keep holding a query slot), a cool-down for any
+// server that answers 429 or times out, and one query per place, cached for a week.
 const OSM_TAGS = /^(name|route|network|distance|sac_scale|climbing.*|indoor|leisure|piste:type)$/;
+const OVERPASS = [
+  {url: 'https://overpass.private.coffee/api/interpreter', name: 'private.coffee'},
+  {url: 'https://overpass-api.de/api/interpreter', name: 'overpass-api.de'},
+  {url: 'https://ovp.dresel.systems/api/interpreter', name: 'dresel.systems'},
+];
+const OSM_BUCKETS = [90, 170];               // search-box half-widths in km
+const osmDown = new Map();                    // server url -> cool-down end (ms)
+const osmKey = (origin, b) => `ww.osm.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
+const osmBucket = radiusKm => OSM_BUCKETS.find(b => b >= radiusKm) || OSM_BUCKETS[OSM_BUCKETS.length - 1];
 async function getOsm(origin, radiusKm){
-  const r = Math.ceil(radiusKm/20)*20;
-  const key = `ww.osm.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${r}`;
-  try {
-    const c = JSON.parse(localStorage.getItem(key) || 'null');
-    if (c && Date.now() - c.at < 7*24*H) return {elements: c.elements, cached: true};
-  } catch {}
+  const r = osmBucket(radiusKm);
+  for (const b of OSM_BUCKETS.filter(b => b >= r)){
+    try {
+      const c = JSON.parse(localStorage.getItem(osmKey(origin, b)) || 'null');
+      if (c && Date.now() - c.at < 7*24*H) return {elements: c.elements, cached: true};
+    } catch {}
+  }
   const dLat = r/111.32, dLon = r/(111.32*Math.cos(origin.lat*Math.PI/180));
   const bb = [origin.lat - dLat, origin.lon - dLon, origin.lat + dLat, origin.lon + dLon].map(v => v.toFixed(4)).join(',');
-  const q = `[out:json][timeout:20][bbox:${bb}];(relation["route"~"^(hiking|foot|running)$"]["name"];nwr["climbing"~"^(crag|area|boulder)$"]["name"];nwr["piste:type"~"^(skitour|backcountry)$"]["name"];);out tags center 600;`;
-  // Ask the main server first; if it hasn't answered in 6 s, ask a mirror too and take whichever wins.
-  const eps = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-  const ctls = eps.map(() => new AbortController());
-  let done = false;
-  const attempt = (i, delay) => new Promise((res, rej) => setTimeout(() => {
-    if (done) return rej(new Error('skipped'));
-    getJSON(eps[i], {method:'POST', body: new URLSearchParams({data: q}), signal: ctls[i].signal}, 22000)
-      .then(d => d.remark && /error|timed out/i.test(d.remark) ? rej(new Error('Overpass: ' + d.remark)) : res(d), rej);
-  }, delay));
-  let data;
-  try { data = await Promise.any([attempt(0, 0), attempt(1, 6000)]); }
-  catch (agg){ throw (agg.errors || []).find(e => e && e.message !== 'skipped' && !e.aborted) || new Error('no answer'); }
-  finally { done = true; ctls.forEach(c => c.abort()); }
-  const elements = (data.elements || []).map(e => ({type: e.type, id: e.id, lat: e.lat, lon: e.lon, center: e.center,
-    tags: Object.fromEntries(Object.entries(e.tags || {}).filter(([k]) => OSM_TAGS.test(k)))}));
-  try { localStorage.setItem(key, JSON.stringify({at: Date.now(), elements})); } catch {}
-  return {elements, cached: false};
+  // Long-distance route relations (national/regional networks) are skipped: costly to locate, useless as a day run.
+  const q = `[out:json][timeout:20][bbox:${bb}];(` +
+    `relation["route"~"^(hiking|foot|running)$"]["name"]["network"!~"^(nwn|iwn|rwn)$"];` +
+    `nwr["climbing"~"^(crag|area|boulder)$"]["name"];` +
+    `nwr["piste:type"~"^(skitour|backcountry)$"]["name"];` +
+    `);out tags center 1500;`;
+  const usable = OVERPASS.filter(sv => !(osmDown.get(sv.url) > Date.now()));
+  if (!usable.length) throw new Error('every OpenStreetMap server is cooling down after errors; try again in a minute or two');
+  const tried = [];
+  for (const sv of usable){
+    state.osmServer = sv.name;
+    try {
+      const d = await getJSON(sv.url, {method: 'POST', body: new URLSearchParams({data: q})}, 27000);
+      if (d.remark && /error|timed out|memory/i.test(d.remark)) throw Object.assign(new Error('server-side timeout'), {serverBusy: true});
+      const elements = (d.elements || []).map(e => ({type: e.type, id: e.id, lat: e.lat, lon: e.lon, center: e.center,
+        tags: Object.fromEntries(Object.entries(e.tags || {}).filter(([k]) => OSM_TAGS.test(k)))}));
+      try { localStorage.setItem(osmKey(origin, r), JSON.stringify({at: Date.now(), elements})); } catch {}
+      state.osmServer = '';
+      return {elements, cached: false, server: sv.name};
+    } catch (e){
+      const m = e.message || '';
+      const limited = /answered (429|406)/.test(m);
+      osmDown.set(sv.url, Date.now() + (limited ? 60 : 120)*1000);
+      tried.push(`${sv.name} ${limited ? 'rate-limited this connection (HTTP ' + m.match(/answered (\d+)/)[1] + ')'
+        : /timed out|timeout/.test(m) || e.serverBusy ? 'timed out' : /answered (\d+)/.test(m) ? 'answered HTTP ' + m.match(/answered (\d+)/)[1] : 'could not be reached'}`);
+    }
+  }
+  state.osmServer = '';
+  throw new Error(tried.join('; '));
 }
-const getOsmCached = (origin, radiusKm) =>
-  memo(`osm|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}|${Math.ceil(radiusKm/20)*20}`, 60*MIN, () => getOsm(origin, radiusKm));
+// Shared, in-flight-aware wrapper: a bigger search already loaded or loading covers a smaller one.
+function getOsmCached(origin, radiusKm){
+  const r = osmBucket(radiusKm), o2 = `${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
+  for (const b of OSM_BUCKETS.filter(b => b > r)){ const p = cachedP(`osm|${o2}|${b}`, 60*MIN); if (p) return p; }
+  return memo(`osm|${o2}|${r}`, 60*MIN, () => getOsm(origin, r));
+}
 // Nearest 25 OpenStreetMap finds per activity, minus anything already in the catalog.
 function osmCandidates(elements, catalog, f, origin){
   const extra = E.osmToItems(elements, catalog).map(E.prepare).filter(it => keep(it, f));
@@ -1125,7 +1152,8 @@ async function run(){
       const t0 = Date.now();
       const tick = setInterval(() => {
         if (!live() || !st.osm || st.osm.s !== 'run') return clearInterval(tick);
-        st.osm.note = `${st.osm.base} ${Math.round((Date.now() - t0)/1000)}s`; steps(st);
+        const via = st.osm.base === 'searching' && state.osmServer ? ` ${state.osmServer}` : '';
+        st.osm.note = `${st.osm.base}${via} ${Math.round((Date.now() - t0)/1000)}s`; steps(st);
       }, 1000);
     }
     st.avy = {s:'run'}; st.drive = {s:'run'}; steps(st);
@@ -1144,7 +1172,7 @@ async function run(){
       try {
         const o = await osmP;
         if (!live()) return;
-        if (!o.ok){ st.osm = {s:'fail', note: 'unavailable (' + (o.e.message || 'error') + '); results above are complete'}; steps(st); return; }
+        if (!o.ok){ st.osm = {s:'fail', note: (o.e.message || 'unavailable') + '. Results above are complete'}; steps(st); return; }
         const picked = osmCandidates(o.d.elements, catalog, f, origin);
         const cached = o.d.cached ? ', cached' : '';
         if (!picked.length){ st.osm = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
