@@ -107,6 +107,10 @@ details.more[open] > summary{margin-bottom:12px}
 .steps li.ok::before{background:var(--cell-go)}
 .steps li.warn::before{background:var(--cell-caution)}
 .steps li.fail::before{background:var(--cell-nogo)}
+.pending{margin:12px 0 0;padding:10px 12px;border:1px dashed var(--accent);border-radius:8px;background:var(--accent-soft);font-size:.92rem;line-height:1.4}
+.pending b{font-weight:600}
+.pending .pf{color:var(--muted)}
+.pending .pf.ready{color:var(--go);font-weight:600}
 @keyframes pulse{from{opacity:.35}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.steps li.run::before{animation:none}}
 
@@ -262,6 +266,7 @@ footer p{margin:0;max-width:70ch}
   </form>
 
   <ul class="steps" id="steps" aria-live="polite"></ul>
+  <p class="pending" id="pending" aria-live="polite" hidden></p>
   <div id="out"></div>
 
   <footer>
@@ -780,7 +785,7 @@ const STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'Californ
 const ABBR = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
 const ACT = {run:'Trail runs', climb:'Climbs', ski:'Ski lines'};
 const VERDICT = ['Go', 'Caution', 'No-go'];
-const state = {req:0, avy:null, picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
+const state = {req:0, shown:null, picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
 
 /* ---------- storage (best effort) ---------- */
 const store = {
@@ -903,40 +908,72 @@ function wxURL(points, tz, d0, d1, elevFt){
   if (elevFt) p.set('elevation', elevFt.map(e => Math.round(e*0.3048)).join(','));
   return 'https://api.open-meteo.com/v1/forecast?' + p.toString().replace(/%2C/g, ',');
 }
+/* ---------- request cache ----------
+   Every data request goes through memo(): identical requests share one promise, whether it is
+   still in flight or already answered, so background prefetching and Find options never fetch
+   the same thing twice. Failures drop out of the cache so the next try goes out fresh. */
+const pcache = new Map();
+const MIN = 60000;
+function cachedP(key, ttl){ const h = pcache.get(key); return h && Date.now() - h.at < ttl ? h.p : null; }
+function memo(key, ttl, fn){
+  const hit = cachedP(key, ttl); if (hit) return hit;
+  const p = Promise.resolve().then(fn);
+  pcache.set(key, {p, at: Date.now()});
+  p.catch(() => { const h = pcache.get(key); if (h && h.p === p) pcache.delete(key); });
+  return p;
+}
+const pt4 = p => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+const daysBack = (date, n) => ymd(Date.UTC(+date.slice(0,4), +date.slice(5,7) - 1, +date.slice(8,10)) - n*24*H);
+const WX_TTL = 15*MIN, DRIVE_TTL = 6*60*MIN;
+
+// Forecast for the starting point: gives the time zone and the home-base summary.
+const homeWx = (origin, d0, d1) => memo(`home|${pt4(origin)}|${d0}|${d1}`, WX_TTL,
+  () => getJSON(wxURL([origin], 'auto', d0, d1, null), {}, 20000).then(E.normWx));
+
 async function weatherFor(items, tz, d0, d1, withElev){
-  const out = new Map(), B = 40, jobs = [];
-  for (let i = 0; i < items.length; i += B){
-    const chunk = items.slice(i, i + B);
-    jobs.push(getJSON(wxURL(chunk.map(it => it.wxPt), tz, d0, d1, withElev ? chunk.map(it => it.wxElevFt || 0) : null), {}, 25000)
-      .then(j => (Array.isArray(j) ? j : [j]).forEach((r, k) => out.set(chunk[k].id, E.normWx(r)))));
+  const keyOf = it => `wx|${tz}|${d0}|${d1}|${withElev ? Math.round(it.wxElevFt || 0) : 'dem'}|${pt4(it.wxPt)}`;
+  const seen = new Set();
+  const missing = items.filter(it => { const k = keyOf(it); if (cachedP(k, WX_TTL) || seen.has(k)) return false; seen.add(k); return true; });
+  for (let i = 0; i < missing.length; i += 40){
+    const chunk = missing.slice(i, i + 40);
+    const req = getJSON(wxURL(chunk.map(it => it.wxPt), tz, d0, d1, withElev ? chunk.map(it => it.wxElevFt || 0) : null), {}, 25000)
+      .then(j => Array.isArray(j) ? j : [j]);
+    chunk.forEach((it, k) => memo(keyOf(it), WX_TTL, () => req.then(arr => {
+      if (!arr[k]) throw new Error('forecast missing from response');
+      return E.normWx(arr[k]);
+    })));
   }
-  await Promise.all(jobs);
+  const out = new Map();
+  await Promise.all(items.map(it => memo(keyOf(it), WX_TTL, () => Promise.reject(new Error('forecast request lost')))
+    .then(w => out.set(it.id, w))));
   return out;
 }
 
 async function driveTimes(origin, items){
-  const res = new Map(); let routed = 0;
-  for (let i = 0; i < items.length; i += 80){
-    const chunk = items.slice(i, i + 80);
+  const keyOf = it => `drv|${pt4(origin)}|${pt4(it.drivePt)}`;
+  const seen = new Set();
+  const missing = items.filter(it => { const k = keyOf(it); if (cachedP(k, DRIVE_TTL) || seen.has(k)) return false; seen.add(k); return true; });
+  for (let i = 0; i < missing.length; i += 80){
+    const chunk = missing.slice(i, i + 80);
     const coords = [origin, ...chunk.map(it => it.drivePt)].map(p => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
-    try {
-      const j = await getJSON(`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=duration`, {}, 15000);
-      if (j.code !== 'Ok') throw new Error(j.code);
-      chunk.forEach((it, k) => { const s = j.durations[0][k + 1]; if (s != null){ res.set(it.id, {min: Math.round(s/60), est: false}); routed++; } });
-    } catch {}
-    chunk.forEach(it => {
-      if (!res.has(it.id)) res.set(it.id, {min: E.estDriveMin(E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon)), est: true});
-    });
+    const req = getJSON(`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=duration`, {}, 15000)
+      .then(j => { if (j.code !== 'Ok') throw new Error(j.code); return j.durations[0]; })
+      .catch(() => null);
+    chunk.forEach((it, k) => memo(keyOf(it), DRIVE_TTL, () => req.then(d => {
+      const sec = d && d[k + 1];
+      return sec != null ? {min: Math.round(sec/60), est: false}
+        : {min: E.estDriveMin(E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon)), est: true};
+    })));
   }
+  const res = new Map(); let routed = 0;
+  await Promise.all(items.map(it => memo(keyOf(it), DRIVE_TTL, () => Promise.reject(new Error('drive request lost'))).then(v => {
+    res.set(it.id, v);
+    if (v.est) pcache.delete(keyOf(it)); else routed++; // estimates get another routing try next time
+  })));
   return {res, routed};
 }
 
-async function getAvy(){
-  if (state.avy && Date.now() - state.avy.at < 30*60000) return state.avy.data;
-  const j = await getJSON('https://api.avalanche.org/v2/public/products/map-layer', {}, 20000);
-  state.avy = {at: Date.now(), data: j};
-  return j;
-}
+const getAvy = () => memo('avy', 30*MIN, () => getJSON('https://api.avalanche.org/v2/public/products/map-layer', {}, 20000));
 
 // OpenStreetMap finds via Overpass. A bounding box is far cheaper for Overpass than a
 // radius search; distance is filtered afterwards anyway. Results are cached for a week
@@ -969,6 +1006,15 @@ async function getOsm(origin, radiusKm){
     tags: Object.fromEntries(Object.entries(e.tags || {}).filter(([k]) => OSM_TAGS.test(k)))}));
   try { localStorage.setItem(key, JSON.stringify({at: Date.now(), elements})); } catch {}
   return {elements, cached: false};
+}
+const getOsmCached = (origin, radiusKm) =>
+  memo(`osm|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}|${Math.ceil(radiusKm/20)*20}`, 60*MIN, () => getOsm(origin, radiusKm));
+// Nearest 25 OpenStreetMap finds per activity, minus anything already in the catalog.
+function osmCandidates(elements, catalog, f, origin){
+  const extra = E.osmToItems(elements, catalog).map(E.prepare).filter(it => keep(it, f));
+  const byType = {};
+  extra.forEach(it => { it._km = E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon); (byType[it.type] ||= []).push(it); });
+  return Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
 }
 
 /* ---------- date / time ---------- */
@@ -1051,7 +1097,6 @@ async function run(){
   const st = {loc:{s:'run'}, drive:{s:''}, wx:{s:''}, avy:{s:''}};
   if (f.osm) st.osm = {s:''};
   steps(st);
-  $('#go').disabled = true;
   try {
     const origin = await resolveOrigin(f.loc);
     if (!live()) return;
@@ -1059,10 +1104,8 @@ async function run(){
     state.picked = {label: origin.label, lat: origin.lat, lon: origin.lon};
     $('#loc').value = f.loc = origin.label;
     saveForm(f);
-    const d0 = ymd(Date.UTC(+f.date.slice(0,4), +f.date.slice(5,7) - 1, +f.date.slice(8,10)) - 2*24*H);
-    // Origin forecast: gives the time zone and the home-base summary.
-    const homeRaw = await getJSON(wxURL([origin], 'auto', d0, f.date, null), {}, 20000);
-    const home = E.normWx(homeRaw);
+    const d0 = daysBack(f.date, 2);
+    const home = await homeWx(origin, d0, f.date);
     const tz = home.tz || 'auto';
     st.loc = {s:'ok', note: origin.label}; steps(st);
 
@@ -1076,7 +1119,7 @@ async function run(){
 
     const avyP = getAvy().then(d => ({ok:true, d}), e => ({ok:false, e}));
     const osmRadius = Math.min(f.drive*1.1, 170);
-    const osmP = f.osm ? getOsm(origin, osmRadius).then(d => ({ok:true, d}), e => ({ok:false, e})) : null;
+    const osmP = f.osm ? getOsmCached(origin, osmRadius).then(d => ({ok:true, d}), e => ({ok:false, e})) : null;
     if (f.osm){
       st.osm = {s:'run', base:'searching'};
       const t0 = Date.now();
@@ -1093,6 +1136,8 @@ async function run(){
     if (!live()) return;
     state.last = {ctx: ctxBase, results, osmCount: 0};
     render(state.last);
+    state.shown = {key: formKey(f), label: origin.label};
+    updatePending();
 
     if (osmP){
       // Optional extras: a failure here never replaces the results already on screen.
@@ -1100,11 +1145,7 @@ async function run(){
         const o = await osmP;
         if (!live()) return;
         if (!o.ok){ st.osm = {s:'fail', note: 'unavailable (' + (o.e.message || 'error') + '); results above are complete'}; steps(st); return; }
-        const extra = E.osmToItems(o.d.elements, catalog).map(E.prepare).filter(it => keep(it, f));
-        // Keep the nearest few per activity so the extra calls stay light.
-        const byType = {};
-        extra.forEach(it => { it._km = E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon); (byType[it.type] ||= []).push(it); });
-        const picked = Object.values(byType).flatMap(a => a.sort((x, y) => x._km - y._km).slice(0, 25));
+        const picked = osmCandidates(o.d.elements, catalog, f, origin);
         const cached = o.d.cached ? ', cached' : '';
         if (!picked.length){ st.osm = {s:'ok', note:`nothing new nearby${cached}`}; steps(st); return; }
         st.osm.base = `${picked.length} finds, checking weather`; steps(st);
@@ -1125,9 +1166,55 @@ async function run(){
     steps(st);
     const msg = (e.message || String(e)).replace(/\.$/, '');
     showErr(e.network ? `${cap(msg)}. ${NET_HELP}` : msg + '.');
-  } finally {
-    if (live()) $('#go').disabled = false;
   }
+}
+
+/* ---------- background prefetch ----------
+   When the place (or date, drive, activities) changes, load drive times, forecasts and
+   avalanche data quietly. The results on screen stay put until Find options is pressed,
+   and that press reuses whatever has arrived, or joins requests still in flight. */
+const pf = {req: 0, status: '', timer: null};
+function schedulePrefetch(ms){ clearTimeout(pf.timer); pf.timer = setTimeout(prefetch, ms); }
+async function warm(items, origin, f, tz, d0, withElev){
+  const pre = items.filter(it => E.haversineKm(origin.lat, origin.lon, it.drivePt.lat, it.drivePt.lon) <= f.drive/60*110);
+  const dt = await driveTimes(origin, pre);
+  const inRange = pre.filter(it => dt.res.get(it.id).min <= f.drive);
+  if (inRange.length) await weatherFor(inRange, tz, d0, f.date, withElev);
+}
+async function prefetch(){
+  const f = readForm();
+  const origin = state.picked;
+  if (!origin || f.loc !== origin.label || !f.date || !f.acts.length) return;
+  const my = ++pf.req;
+  const live = () => my === pf.req;
+  setPf('loading');
+  try {
+    const d0 = daysBack(f.date, 2);
+    const home = await homeWx(origin, d0, f.date);
+    const tz = home.tz || 'auto';
+    getAvy().catch(() => {});
+    const catalog = E.CATALOG.map(E.prepare).filter(it => keep(it, f));
+    const osmP = f.osm ? getOsmCached(origin, Math.min(f.drive*1.1, 170)).catch(() => null) : null;
+    await warm(catalog, origin, f, tz, d0, true);
+    if (live()) setPf('ready');
+    const o = osmP && await osmP;
+    if (o && live()) await warm(osmCandidates(o.elements, catalog, f, origin), origin, f, tz, d0, false);
+  } catch {
+    if (live()) setPf('');
+  }
+}
+function setPf(s){ pf.status = s; updatePending(); }
+const formKey = f => JSON.stringify([f.loc, f.date, f.t0, f.t1, f.drive, f.d2d, f.osm, f.tech, f.acts, f.styles]);
+function updatePending(){
+  const el = $('#pending');
+  const f = readForm();
+  if (!state.shown || formKey(f) === state.shown.key){ el.hidden = true; return; }
+  const msg = f.loc !== state.shown.label
+    ? `Showing results for <b>${esc(state.shown.label)}</b>. Press Find options for <b>${esc(f.loc || 'the new place')}</b>.`
+    : 'Showing results for your previous settings. Press Find options to update.';
+  const pfText = pf.status === 'loading' ? 'Loading its data in the background…' : pf.status === 'ready' ? 'Data is ready.' : '';
+  el.innerHTML = msg + (pfText ? ` <span class="pf ${pf.status}">${pfText}</span>` : '');
+  el.hidden = false;
 }
 
 async function scoreItems(items, cb, avyP, st, live, withElev){
@@ -1367,7 +1454,8 @@ function syncLabels(){
 }
 loadForm(); defaults(); syncLabels();
 $('#drive').addEventListener('input', syncLabels);
-$('#q').addEventListener('change', syncLabels);
+$('#q').addEventListener('change', e => { syncLabels(); updatePending(); if (e.target.id !== 'loc') schedulePrefetch(500); });
+$('#q').addEventListener('input', e => { if (e.target.id === 'drive') updatePending(); });
 $('#q').addEventListener('submit', e => { e.preventDefault(); run(); });
 $('#geo').addEventListener('click', () => {
   if (!navigator.geolocation) return showErr('Location is not available in this browser.');
@@ -1375,7 +1463,7 @@ $('#geo').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition(p => {
     const lat = p.coords.latitude, lon = p.coords.longitude;
     pickPlace({label: `My location (${lat.toFixed(3)}, ${lon.toFixed(3)})`, lat, lon});
-    $('#geo').disabled = false; run();
+    $('#geo').disabled = false;
   }, err => {
     $('#geo').disabled = false;
     showErr(err.code === 1 ? 'Location permission was denied. Type a place instead.' : 'Could not get your location. Type a place instead.');
@@ -1402,10 +1490,13 @@ function pickPlace(s){
   state.picked = {label: s.label, lat: s.lat, lon: s.lon};
   locIn.value = s.label;
   sugg = []; closeList(); showErr('');
+  updatePending();
+  schedulePrefetch(0);
 }
 locIn.addEventListener('input', () => {
   const q = locIn.value.trim();
   if (state.picked && locIn.value !== state.picked.label) state.picked = null;
+  updatePending();
   clearTimeout(deb);
   if (searchCtl) searchCtl.abort();
   if (q.length < 2){ sugg = []; closeList(); return; }
@@ -1428,12 +1519,12 @@ locIn.addEventListener('keydown', e => {
   if (locList.hidden || !sugg.length) return;
   if (e.key === 'ArrowDown'){ e.preventDefault(); active = (active + 1) % sugg.length; drawList(); }
   else if (e.key === 'ArrowUp'){ e.preventDefault(); active = (active - 1 + sugg.length) % sugg.length; drawList(); }
-  else if (e.key === 'Enter' && active >= 0){ e.preventDefault(); pickPlace(sugg[active]); run(); }
+  else if (e.key === 'Enter' && active >= 0){ e.preventDefault(); pickPlace(sugg[active]); }
 });
 locList.addEventListener('mousedown', e => e.preventDefault()); // keep focus in the input
 locList.addEventListener('click', e => {
   const li = e.target.closest('li[data-i]');
-  if (li){ pickPlace(sugg[+li.dataset.i]); run(); }
+  if (li) pickPlace(sugg[+li.dataset.i]);
 });
 locIn.addEventListener('focus', () => { locIn.select(); if (sugg.length && !state.picked) drawList(); });
 locIn.addEventListener('blur', () => setTimeout(closeList, 150));
