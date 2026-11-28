@@ -263,6 +263,41 @@ details.ro > summary{cursor:pointer;list-style:none;display:flex;gap:9px;line-he
 details.ro > summary::before{content:"+";flex:none;font:400 .9rem/1.4 var(--font-mono);color:var(--muted);width:1ch}
 details.ro[open] > summary::before{content:"−"}
 details.ro[open] > summary{margin-bottom:10px}
+details.routes{border-top:1px solid var(--line);padding-top:12px}
+details.routes > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;font:500 1rem var(--font-sans);color:var(--ink)}
+details.routes > summary::-webkit-details-marker{display:none}
+details.routes > summary::before{content:"+";display:inline-grid;place-items:center;width:17px;height:17px;border:1px solid currentColor;font:400 .8rem/1 var(--font-mono)}
+details.routes[open] > summary::before{content:"−"}
+details.routes > summary .c{font:400 .76rem var(--font-mono);color:var(--muted)}
+.rt-body{margin-top:12px;display:grid;gap:12px}
+.rt-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rt-chip{font:400 .78rem/1 var(--font-mono);padding:7px 9px;border:1px solid var(--line);background:transparent;color:var(--muted)}
+.rt-chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.rt-chip[aria-pressed="true"]:hover{background:var(--ink)}
+.rt-sep{width:1px;height:22px;background:var(--line);margin:0 3px}
+.rt-sort{margin-left:auto}
+.rt-sort select{font:400 .78rem var(--font-mono);padding:6px 8px;width:auto;background:var(--surface-2)}
+.rt-count{margin:0;font:400 .76rem var(--font-mono);color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;align-items:baseline}
+.rt-count button,.rt-load button{font:400 .76rem var(--font-mono);padding:0;border:0;background:none;color:var(--accent);text-decoration:underline}
+.rt-wall{display:grid}
+.rt-wall + .rt-wall{margin-top:6px}
+.rt-wall h4{margin:0;padding-bottom:5px;border-bottom:1px solid var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:500 .86rem var(--font-sans)}
+.rt-wall h4 a{color:var(--ink);text-decoration:none}
+.rt-wall h4 a:hover{text-decoration:underline}
+.rt-wall h4 span{font:400 .72rem var(--font-mono);color:var(--muted);white-space:nowrap}
+ul.rt-list{list-style:none;margin:0;padding:0}
+.rt{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}
+.rt-n{font:500 .94rem/1.3 var(--font-sans);color:var(--ink);text-decoration:none}
+.rt-n:hover{text-decoration:underline}
+.rt-g{font:500 .84rem/1.3 var(--font-mono);text-align:right;white-space:nowrap}
+.rt-m{grid-column:1/-1;font:400 .72rem/1.4 var(--font-mono);color:var(--muted)}
+.rt-m a{color:var(--accent)}
+.rt-s{color:var(--nogo)}
+.rt-more{justify-self:start;font-size:.86rem;padding:8px 12px}
+.rt-load{margin:0;font:400 .8rem var(--font-mono);color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rt-load .spin{width:11px;height:11px;border:1.5px dotted var(--muted);border-radius:50%;animation:spin 1.8s linear infinite}
+.rt-note{margin:0;font:400 .72rem/1.5 var(--font-mono);color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.rt-load .spin{animation:none}}
 .ro-t{min-width:0}
 .ro-card .card{background:var(--surface-2)}
 details.ruled li b{font-weight:500}
@@ -381,7 +416,7 @@ const H = 3600000;
 /* ---------------- Catalog ----------------
    run:   lat/lon = trailhead. thElev/highElev ft, miles, gain ft, tech 1 smooth · 2 moderate · 3 technical,
           exposure foothills|forest|alpine, winterAvy = route crosses avalanche paths in winter.
-   climb: lat/lon = crag; th = [lat,lon] parking if different. rock, wet = how much rain/snow hurts it
+   climb: lat/lon = crag; th = [lat,lon] parking if different; routeR = km around the marker to list walls and routes. rock, wet = how much rain/snow hurts it
           (high: soft sandstone, medium: hard sandstone/conglomerate, low: granite/gneiss/basalt/limestone),
           aspects (or ['mixed']), styles, approach minutes, seasonal = {months, note}.
    ski:   lat/lon = trailhead/parking, line = [lat,lon] of the terrain. thElev, top, bottom ft,
@@ -425,24 +460,24 @@ const CATALOG = [
   {id:'r-royal', type:'run', name:'Mount Royal & Rainbow Lake', area:'Frisco', lat:39.5762, lon:-106.1037, thElev:9100, highElev:10500, miles:3.6, gain:1400, tech:3, exposure:'forest', note:'Steep; snowpacked in winter.'},
 
   // ---------- Climbs ----------
-  {id:'c-redgarden', type:'climb', name:'Eldorado Canyon: Redgarden Wall', area:'Eldorado Springs', lat:39.9315, lon:-105.2900, elev:6200, rock:'sandstone', wet:'medium', aspects:['S','SE'], styles:['trad','multi'], approach:10, note:'State park fee; lot fills early on weekends.'},
-  {id:'c-bastille', type:'climb', name:'Eldorado Canyon: The Bastille', area:'Eldorado Springs', lat:39.9310, lon:-105.2840, elev:6000, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:2},
-  {id:'c-windtower', type:'climb', name:'Eldorado Canyon: Wind Tower', area:'Eldorado Springs', lat:39.9312, lon:-105.2870, elev:6100, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:5},
-  {id:'c-third', type:'climb', name:'Third Flatiron (East Face)', area:'Boulder', lat:39.9880, lon:-105.2930, th:[39.9990,-105.2815], elev:7000, rock:'conglomerate', wet:'medium', aspects:['E'], styles:['trad','multi'], approach:40, note:'Morning sun, shade after midday. Rappel descent.'},
-  {id:'c-golden', type:'climb', name:'Golden Cliffs (North Table Mountain)', area:'Golden', lat:39.7745, lon:-105.2215, th:[39.7738,-105.2190], elev:6200, rock:'basalt', wet:'low', aspects:['W','SW'], styles:['sport','trad'], approach:15, note:'Afternoon sun; a winter go-to.', seasonal:{months:[2,3,4,5,6,7], note:'Some sections close for nesting raptors in spring and summer.'}},
-  {id:'c-ccc', type:'climb', name:'Clear Creek Canyon crags', area:'US 6, Golden', lat:39.7480, lon:-105.2770, elev:6700, rock:'gneiss', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:10, note:'Sunny and shady walls on both sides of the canyon; roadside parking.'},
-  {id:'c-bouldercyn', type:'climb', name:'Boulder Canyon crags', area:'CO 119, Boulder', lat:40.0050, lon:-105.3300, elev:6700, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad','multi'], approach:10},
-  {id:'c-flagstaff', type:'climb', name:'Flagstaff Mountain bouldering', area:'Boulder', lat:40.0020, lon:-105.3030, elev:7000, rock:'sandstone', wet:'medium', aspects:['mixed'], styles:['boulder'], approach:2, note:'Paid parking for out-of-county vehicles.'},
-  {id:'c-morrison', type:'climb', name:'Morrison bouldering', area:'Morrison', lat:39.6480, lon:-105.1990, elev:6300, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['boulder'], approach:15},
-  {id:'c-lumpy', type:'climb', name:'Lumpy Ridge', area:'Estes Park', lat:40.3990, lon:-105.5150, th:[40.3960,-105.5130], elev:8600, rock:'granite', wet:'low', aspects:['S'], styles:['trad','multi'], approach:45, seasonal:{months:[3,4,5,6,7], note:'Raptor closures on several formations in spring and summer.'}},
-  {id:'c-staunton', type:'climb', name:'Staunton State Park crags', area:'Pine', lat:39.5000, lon:-105.3790, elev:9000, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','sport'], approach:75, note:'Long approaches; state park pass.'},
-  {id:'c-castlewood', type:'climb', name:'Castlewood Canyon', area:'Franktown', lat:39.3330, lon:-104.7460, elev:6300, rock:'conglomerate', wet:'medium', aspects:['mixed'], styles:['sport','boulder'], approach:15, note:'State park pass required.'},
-  {id:'c-turkey', type:'climb', name:'Turkey Rocks', area:'Deckers', lat:39.1240, lon:-105.2350, elev:7900, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad'], approach:30, note:'Classic cracks; dirt access road.'},
-  {id:'c-elevenmile', type:'climb', name:'Elevenmile Canyon', area:'Lake George', lat:38.9640, lon:-105.4100, elev:8000, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:5, note:'Day-use fee; canyon road can be icy in winter.'},
-  {id:'c-gotg', type:'climb', name:'Garden of the Gods', area:'Colorado Springs', lat:38.8790, lon:-104.8800, elev:6400, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['trad','sport'], approach:5, note:'Free climbing permit required; never climb when the rock is wet.'},
-  {id:'c-rrcos', type:'climb', name:'Red Rock Canyon Open Space', area:'Colorado Springs', lat:38.8540, lon:-104.8810, elev:6200, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['sport'], approach:15, note:'Soft sandstone; needs dry days.'},
-  {id:'c-shelf', type:'climb', name:'Shelf Road', area:'Cañon City', lat:38.6370, lon:-105.2240, elev:6500, rock:'limestone', wet:'low', aspects:['S','E'], styles:['sport'], approach:10, note:'Sunny limestone sport; the classic winter crag.'},
-  {id:'c-vedauwoo', type:'climb', name:'Vedauwoo', area:'Laramie, WY', lat:41.1590, lon:-105.3800, elev:8200, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','boulder'], approach:15, note:'Wide cracks, coarse rock, notorious wind.'},
+  {id:'c-redgarden', type:'climb', routeR:0.5, name:'Eldorado Canyon: Redgarden Wall', area:'Eldorado Springs', lat:39.9315, lon:-105.2900, elev:6200, rock:'sandstone', wet:'medium', aspects:['S','SE'], styles:['trad','multi'], approach:10, note:'State park fee; lot fills early on weekends.'},
+  {id:'c-bastille', type:'climb', routeR:0.4, name:'Eldorado Canyon: The Bastille', area:'Eldorado Springs', lat:39.9310, lon:-105.2840, elev:6000, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:2},
+  {id:'c-windtower', type:'climb', routeR:0.4, name:'Eldorado Canyon: Wind Tower', area:'Eldorado Springs', lat:39.9312, lon:-105.2870, elev:6100, rock:'sandstone', wet:'medium', aspects:['S'], styles:['trad','multi'], approach:5},
+  {id:'c-third', type:'climb', routeR:0.5, name:'Third Flatiron (East Face)', area:'Boulder', lat:39.9880, lon:-105.2930, th:[39.9990,-105.2815], elev:7000, rock:'conglomerate', wet:'medium', aspects:['E'], styles:['trad','multi'], approach:40, note:'Morning sun, shade after midday. Rappel descent.'},
+  {id:'c-golden', type:'climb', routeR:1.2, name:'Golden Cliffs (North Table Mountain)', area:'Golden', lat:39.7745, lon:-105.2215, th:[39.7738,-105.2190], elev:6200, rock:'basalt', wet:'low', aspects:['W','SW'], styles:['sport','trad'], approach:15, note:'Afternoon sun; a winter go-to.', seasonal:{months:[2,3,4,5,6,7], note:'Some sections close for nesting raptors in spring and summer.'}},
+  {id:'c-ccc', type:'climb', routeR:3, name:'Clear Creek Canyon crags', area:'US 6, Golden', lat:39.7480, lon:-105.2770, elev:6700, rock:'gneiss', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:10, note:'Sunny and shady walls on both sides of the canyon; roadside parking.'},
+  {id:'c-bouldercyn', type:'climb', routeR:3, name:'Boulder Canyon crags', area:'CO 119, Boulder', lat:40.0050, lon:-105.3300, elev:6700, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad','multi'], approach:10},
+  {id:'c-flagstaff', type:'climb', routeR:1.2, name:'Flagstaff Mountain bouldering', area:'Boulder', lat:40.0020, lon:-105.3030, elev:7000, rock:'sandstone', wet:'medium', aspects:['mixed'], styles:['boulder'], approach:2, note:'Paid parking for out-of-county vehicles.'},
+  {id:'c-morrison', type:'climb', routeR:1.2, name:'Morrison bouldering', area:'Morrison', lat:39.6480, lon:-105.1990, elev:6300, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['boulder'], approach:15},
+  {id:'c-lumpy', type:'climb', routeR:2.5, name:'Lumpy Ridge', area:'Estes Park', lat:40.3990, lon:-105.5150, th:[40.3960,-105.5130], elev:8600, rock:'granite', wet:'low', aspects:['S'], styles:['trad','multi'], approach:45, seasonal:{months:[3,4,5,6,7], note:'Raptor closures on several formations in spring and summer.'}},
+  {id:'c-staunton', type:'climb', routeR:2.5, name:'Staunton State Park crags', area:'Pine', lat:39.5000, lon:-105.3790, elev:9000, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','sport'], approach:75, note:'Long approaches; state park pass.'},
+  {id:'c-castlewood', type:'climb', routeR:1.5, name:'Castlewood Canyon', area:'Franktown', lat:39.3330, lon:-104.7460, elev:6300, rock:'conglomerate', wet:'medium', aspects:['mixed'], styles:['sport','boulder'], approach:15, note:'State park pass required.'},
+  {id:'c-turkey', type:'climb', routeR:1.5, name:'Turkey Rocks', area:'Deckers', lat:39.1240, lon:-105.2350, elev:7900, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad'], approach:30, note:'Classic cracks; dirt access road.'},
+  {id:'c-elevenmile', type:'climb', routeR:3, name:'Elevenmile Canyon', area:'Lake George', lat:38.9640, lon:-105.4100, elev:8000, rock:'granite', wet:'low', aspects:['mixed'], styles:['sport','trad'], approach:5, note:'Day-use fee; canyon road can be icy in winter.'},
+  {id:'c-gotg', type:'climb', routeR:1, name:'Garden of the Gods', area:'Colorado Springs', lat:38.8790, lon:-104.8800, elev:6400, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['trad','sport'], approach:5, note:'Free climbing permit required; never climb when the rock is wet.'},
+  {id:'c-rrcos', type:'climb', routeR:1.5, name:'Red Rock Canyon Open Space', area:'Colorado Springs', lat:38.8540, lon:-104.8810, elev:6200, rock:'sandstone', wet:'high', aspects:['mixed'], styles:['sport'], approach:15, note:'Soft sandstone; needs dry days.'},
+  {id:'c-shelf', type:'climb', routeR:3, name:'Shelf Road', area:'Cañon City', lat:38.6370, lon:-105.2240, elev:6500, rock:'limestone', wet:'low', aspects:['S','E'], styles:['sport'], approach:10, note:'Sunny limestone sport; the classic winter crag.'},
+  {id:'c-vedauwoo', type:'climb', routeR:2.5, name:'Vedauwoo', area:'Laramie, WY', lat:41.1590, lon:-105.3800, elev:8200, rock:'granite', wet:'low', aspects:['mixed'], styles:['trad','boulder'], approach:15, note:'Wide cracks, coarse rock, notorious wind.'},
 
   // ---------- Ski lines ----------
   {id:'s-bp-east', type:'ski', name:"Berthoud Pass: East Side & Hell's Half Acre", area:'Berthoud Pass (US 40)', lat:39.7983, lon:-105.7772, line:[39.7995,-105.7735], thElev:11300, top:11700, bottom:11300, aspects:['W','N','NW'], ates:'challenging', approachMi:0.4, minSession:120, note:"Short laps from the pass lot; Hell's Half Acre is a common beacon-practice spot.", src:'https://frontrangeskimo.squarespace.com/berthoud-pass-hells-half-acre-and-east-side'},
@@ -871,12 +906,16 @@ const E = Engine;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const H = 3600000;
+function loadRtf(){
+  try { const f = JSON.parse(localStorage.getItem('ww.rtf') || 'null'); if (f && Array.isArray(f.types) && Array.isArray(f.bands)) return {types: f.types, bands: f.bands, sort: f.sort || 'wall'}; } catch {}
+  return {types: [], bands: [], sort: 'wall'};
+}
 const STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
 const ABBR = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [v, k]));
 const ACT = {run:'Trail runs', climb:'Climbs', ski:'Ski lines'};
 const VERDICT = ['Go', 'Caution', 'No-go'];
 const SOURCE_TAG = {osm: 'OSM', openbeta: 'OpenBeta'};
-const state = {req:0, shown:null, osmServer:'', picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
+const state = {req:0, shown:null, osmServer:'', rtData: new Map(), rtOpen: new Set(), rtAll: new Set(), rtf: loadRtf(), picked:{label:'Golden, CO', lat:39.7555, lon:-105.2211}};
 
 /* ---------- storage (best effort) ---------- */
 const store = {
@@ -1165,15 +1204,16 @@ function groupOpenBeta(leaves){
     const c = k => (d[k] && d[k].total) || 0;
     let x = g.get(key);
     if (!x) g.set(key, x = {uuid: key, name: n >= 2 ? pt[n - 2] : a.areaName, region: n >= 3 ? pt[n - 3] : '',
-      lat: 0, lon: 0, w: 0, walls: 0, climbs: 0, sport: 0, trad: 0, boulder: 0, tr: 0, alpine: 0, snow: 0, ice: 0, mixed: 0});
+      lat: 0, lon: 0, w: 0, walls: 0, climbs: 0, leaves: [], sport: 0, trad: 0, boulder: 0, tr: 0, alpine: 0, snow: 0, ice: 0, mixed: 0});
     const wt = Math.max(1, a.totalClimbs || 0);
     x.lat += m.lat*wt; x.lon += m.lng*wt; x.w += wt; x.walls++; x.climbs += a.totalClimbs || 0;
     x.sport += c('sport'); x.trad += c('trad'); x.boulder += c('bouldering'); x.tr += c('tr');
     x.alpine += c('alpine'); x.snow += c('snow'); x.ice += c('ice'); x.mixed += c('mixed');
+    if (x.leaves.length < 80 && a.totalClimbs > 0) x.leaves.push({uuid: a.uuid, name: a.areaName, lat: m.lat, lon: m.lng});
   }
   return [...g.values()].map(({w, ...x}) => ({...x, lat: +(x.lat/w).toFixed(5), lon: +(x.lon/w).toFixed(5)}));
 }
-const obKey = (origin, b) => `ww.ob2.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
+const obKey = (origin, b) => `ww.ob3.${origin.lat.toFixed(2)},${origin.lon.toFixed(2)},${b}`;
 async function getOpenBeta(origin, radiusKm){
   const r = osmBucket(radiusKm);
   for (const b of OSM_BUCKETS.filter(b => b >= r)){
@@ -1216,7 +1256,7 @@ function obCandidates(groups, catalog, f, origin){
     const it = E.prepare({id: `ob-${g.uuid}`, type: 'climb', source: 'openbeta', name: g.name, area: g.region,
       lat: g.lat, lon: g.lon, rock: 'rock type unknown', wet: 'medium', aspects: ['mixed'], styles, approach: 15,
       routes: {sport: g.sport, trad: g.trad, boulder: g.boulder, tr: g.tr, total: rock}, walls: g.walls,
-      obUrl: `https://openbeta.io/area/${g.uuid}`});
+      obUrl: `https://openbeta.io/area/${g.uuid}`, obLeaves: g.leaves});
     if (!keep(it, f)) continue;
     it._km = E.haversineKm(origin.lat, origin.lon, g.lat, g.lon);
     it._rank = rock/(1 + it._km/25);
@@ -1393,6 +1433,77 @@ async function enrichTerrain(items){
     if (t.a){ it.aspects = [t.a]; it.aspectSource = 'terrain'; }
   });
   return items;
+}
+
+/* ---------- routes at a crag (OpenBeta) ----------
+   The crag's walls (known for OpenBeta crags; otherwise the nearest walls within routeR km of
+   the marker), then every climb on them in one aliased request per 20 walls. Cached a week. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RT_FIELDS = 'uuid name length boltsCount safety grades { yds vscale } type { sport trad tr bouldering aid alpine mixed ice snow deepwatersolo } metadata { mp_id leftRightIndex } pitches { pitchNumber }';
+async function obQuery(query, variables){
+  const j = await getJSON(OB_URL, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({query, variables})}, 30000);
+  if (!j.data) throw new Error('OpenBeta: ' + ((j.errors && j.errors[0] && j.errors[0].message) || 'no data'));
+  return j.data;
+}
+async function wallsNear(lat, lon, km){
+  const d = await obQuery(`query W($lat: Float, $lng: Float, $max: Int) { cragsNear(lnglat: {lat: $lat, lng: $lng}, maxDistance: $max, includeCrags: true) {
+    crags { uuid areaName totalClimbs metadata { lat lng } } } }`, {lat, lng: lon, max: Math.round(km*1000)});
+  const seen = new Set();
+  return (d.cragsNear || []).flatMap(b => b.crags || [])
+    .filter(a => a.totalClimbs > 0 && a.metadata && a.metadata.lat != null && !seen.has(a.uuid) && seen.add(a.uuid))
+    .map(a => ({uuid: a.uuid, name: a.areaName, lat: a.metadata.lat, lon: a.metadata.lng}));
+}
+// Sortable number for a grade: 5.10a = 10.0, 5.10b = 10.25, 5.10+ = 10.6; V4 = 4, VB = -1.
+function gradeNum(g){
+  if (!g) return null;
+  let m = /5\.(\d+)\s*([a-d])?(?:\/([a-d]))?\s*([+-])?/i.exec(g);
+  if (m){
+    const base = +m[1];
+    if (m[2]) return base + 'abcd'.indexOf(m[2].toLowerCase())*0.25 + (m[3] ? 0.125 : 0);
+    if (m[4] === '+') return base + (base >= 10 ? 0.6 : 0.5);
+    if (m[4] === '-') return base + 0.1;
+    return base + (base >= 10 ? 0.4 : 0);
+  }
+  m = /V(\d+|B)\s*([+-])?/i.exec(g);
+  if (m) return (m[1].toUpperCase() === 'B' ? -1 : +m[1]) + (m[2] === '+' ? 0.5 : m[2] === '-' ? -0.2 : 0);
+  return null;
+}
+const RT_TYPES = ['sport', 'trad', 'tr', 'bouldering', 'aid', 'alpine', 'mixed', 'ice', 'snow', 'deepwatersolo'];
+function normRoute(c){
+  const t = c.type || {}, gr = c.grades || {}, md = c.metadata || {};
+  const types = RT_TYPES.filter(k => t[k]);
+  const boulder = t.bouldering && !t.sport && !t.trad && !t.tr;
+  const g = (boulder ? gr.vscale : gr.yds) || gr.yds || gr.vscale || '';
+  return {u: c.uuid, n: c.name, g, k: /^V/i.test(g) ? 'b' : 'r', gn: gradeNum(g), t: types,
+    len: c.length > 0 ? Math.round(c.length*3.281) : null, b: c.boltsCount > 0 ? c.boltsCount : null,
+    p: (c.pitches || []).length > 1 ? c.pitches.length : null, s: /^(PG13|R|X)$/.test(c.safety || '') ? c.safety : null,
+    mp: /^\d+$/.test(md.mp_id || '') ? md.mp_id : null, lr: md.leftRightIndex ?? null};
+}
+async function getCragRoutes(it){
+  const key = `ww.rt.${it.id}`;
+  try {
+    const c = JSON.parse(localStorage.getItem(key) || 'null');
+    if (c && Date.now() - c.at < 7*24*H) return c.data;
+  } catch {}
+  let walls = it.obLeaves && it.obLeaves.length ? it.obLeaves.slice() : await wallsNear(it.lat, it.lon, it.routeR || 1);
+  walls = walls.filter(w => UUID_RE.test(w.uuid))
+    .map(w => ({...w, km: E.haversineKm(it.lat, it.lon, w.lat, w.lon)}))
+    .sort((a, b) => a.km - b.km).slice(0, 40);
+  for (let i = 0; i < walls.length; i += 20){
+    const chunk = walls.slice(i, i + 20);
+    const d = await obQuery('{' + chunk.map((w, k) => `a${k}: area(uuid: "${w.uuid}") { climbs { ${RT_FIELDS} } }`).join(' ') + '}');
+    chunk.forEach((w, k) => w.routes = ((d[`a${k}`] || {}).climbs || []).map(normRoute));
+  }
+  const data = {walls: walls.filter(w => w.routes && w.routes.length)
+    .map(w => ({uuid: w.uuid, name: w.name, km: +w.km.toFixed(2), routes: w.routes})),
+    scope: it.obLeaves && it.obLeaves.length ? 'crag' : 'radius', km: it.routeR || 1};
+  data.total = data.walls.reduce((a, w) => a + w.routes.length, 0);
+  try {
+    const old = Object.keys(localStorage).filter(k => k.startsWith('ww.rt.') && k !== key);
+    if (old.length >= 25) old.slice(0, old.length - 24).forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(key, JSON.stringify({at: Date.now(), data}));
+  } catch {}
+  return data;
 }
 
 /* ---------- date / time ---------- */
@@ -1824,6 +1935,88 @@ function links(r){
   return `<div class="links">${out.join('')}</div>`;
 }
 
+const RT_BANDS = [
+  {id: 'r9', k: 'r', label: '≤5.9', lo: -Infinity, hi: 10}, {id: 'r10', k: 'r', label: '5.10', lo: 10, hi: 11},
+  {id: 'r11', k: 'r', label: '5.11', lo: 11, hi: 12}, {id: 'r12', k: 'r', label: '5.12', lo: 12, hi: 13},
+  {id: 'r13', k: 'r', label: '5.13+', lo: 13, hi: Infinity},
+  {id: 'v2', k: 'b', label: 'V0–2', lo: -Infinity, hi: 3}, {id: 'v5', k: 'b', label: 'V3–5', lo: 3, hi: 6},
+  {id: 'v8', k: 'b', label: 'V6–8', lo: 6, hi: 9}, {id: 'v9', k: 'b', label: 'V9+', lo: 9, hi: Infinity},
+];
+const RT_TYPE_CHIPS = [['sport', 'Sport'], ['trad', 'Trad'], ['tr', 'TR'], ['bouldering', 'Boulder']];
+const RT_TYPE_LABEL = {sport: 'sport', trad: 'trad', tr: 'TR', bouldering: 'boulder', aid: 'aid', alpine: 'alpine', mixed: 'mixed', ice: 'ice', snow: 'snow', deepwatersolo: 'DWS'};
+const inBand = (rt, b) => rt.k === b.k && rt.gn != null && rt.gn >= b.lo && rt.gn < b.hi;
+function routesSection(r){
+  const it = r.item, n = it.routes && it.routes.total;
+  return `<details class="routes" data-id="${esc(it.id)}"><summary>Routes<span class="c">${n ? `${n} on OpenBeta` : 'from OpenBeta'}</span></summary><div class="rt-body"></div></details>`;
+}
+function routesHTML(data, it){
+  const f = state.rtf;
+  const all = data.walls.flatMap(w => w.routes.map(rt => ({...rt, wall: w.name})));
+  if (!all.length) return `<p class="rt-load">OpenBeta has no routes listed ${data.scope === 'crag' ? 'for this crag' : `within ${data.km} km of this crag's marker`}.</p>`;
+  const match = rt => (!f.types.length || f.types.some(t => rt.t.includes(t))) &&
+    (!f.bands.length || RT_BANDS.some(b => f.bands.includes(b.id) && inBand(rt, b)));
+  const typeChips = RT_TYPE_CHIPS.filter(([k]) => all.some(rt => rt.t.includes(k)))
+    .map(([k, l]) => `<button type="button" class="rt-chip" data-rt="type" data-v="${k}" aria-pressed="${f.types.includes(k)}">${l}</button>`).join('');
+  const bandChips = RT_BANDS.filter(b => all.some(rt => inBand(rt, b)))
+    .map(b => `<button type="button" class="rt-chip" data-rt="band" data-v="${b.id}" aria-pressed="${f.bands.includes(b.id)}">${b.label}</button>`).join('');
+  const sorts = [['wall', 'By wall'], ['easy', 'Easiest first'], ['hard', 'Hardest first'], ['name', 'Name']];
+  const sortSel = `<label class="rt-sort"><span class="sr-only">Sort routes</span><select data-rt="sort">${sorts.map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  const byGrade = (a, b) => (a.gn ?? 99) - (b.gn ?? 99) || a.n.localeCompare(b.n);
+  const row = (rt, showWall) => {
+    const m = [];
+    if (showWall) m.push(esc(rt.wall));
+    m.push(esc(rt.t.map(t => RT_TYPE_LABEL[t]).join('/')));
+    if (rt.p) m.push(`${rt.p} pitches`);
+    if (rt.len) m.push(`${n0(rt.len)} ft`);
+    if (rt.b) m.push(`${rt.b} bolts`);
+    if (rt.s) m.push(`<span class="rt-s">${rt.s}</span>`);
+    if (rt.mp) m.push(`<a href="https://www.mountainproject.com/route/${rt.mp}" target="_blank" rel="noopener">MP</a>`);
+    return `<li class="rt"><a class="rt-n" href="https://openbeta.io/climb/${esc(rt.u)}" target="_blank" rel="noopener">${esc(rt.n)}</a><span class="rt-g">${esc(rt.g || '—')}</span><span class="rt-m">${m.join(' · ')}</span></li>`;
+  };
+  const limit = state.rtAll.has(it.id) ? Infinity : 25;
+  let shown = 0, body = '';
+  const hits = all.filter(match);
+  if (f.sort === 'wall'){
+    for (const w of data.walls){
+      const rs = w.routes.filter(match).sort((a, b) => (a.lr ?? 1e6) - (b.lr ?? 1e6) || byGrade(a, b));
+      if (!rs.length || shown >= limit) continue;
+      const take = rs.slice(0, limit - shown); shown += take.length;
+      body += `<div class="rt-wall"><h4><a href="https://openbeta.io/area/${esc(w.uuid)}" target="_blank" rel="noopener">${esc(w.name)}</a><span>${rs.length} route${rs.length === 1 ? '' : 's'}${data.scope === 'radius' ? ` · ${w.km < 0.1 ? '<0.1' : w.km.toFixed(1)} km` : ''}</span></h4><ul class="rt-list">${take.map(rt => row(rt, false)).join('')}</ul></div>`;
+    }
+  } else {
+    const rs = hits.slice().sort(f.sort === 'name' ? (a, b) => a.n.localeCompare(b.n) : f.sort === 'hard' ? (a, b) => byGrade(b, a) : byGrade);
+    const take = rs.slice(0, limit); shown = take.length;
+    body = `<ul class="rt-list">${take.map(rt => row(rt, true)).join('')}</ul>`;
+  }
+  const filtered = f.types.length || f.bands.length;
+  const scope = data.scope === 'crag' ? `Every wall OpenBeta lists for this crag.` : `Walls within ${data.km} km of the crag marker, nearest first.`;
+  return `<div class="rt-filters">${typeChips}${typeChips && bandChips ? '<span class="rt-sep"></span>' : ''}${bandChips}${sortSel}</div>
+    <p class="rt-count"><span>${filtered ? `${hits.length} of ${all.length} routes match` : `${all.length} routes`} on ${data.walls.length} wall${data.walls.length === 1 ? '' : 's'}</span>${filtered ? '<button type="button" data-rt="clear">Clear filters</button>' : ''}</p>
+    ${hits.length ? body : '<p class="rt-load">No routes match these filters.</p>'}
+    ${hits.length > shown ? `<button type="button" class="rt-more" data-rt="more">Show all ${hits.length} routes</button>` : ''}
+    <p class="rt-note">${scope} Grades and route data from OpenBeta; check a guidebook or Mountain Project before you rope up.</p>`;
+}
+function paintRoutes(d){
+  const id = d.dataset.id, data = state.rtData.get(id), r = state.byId && state.byId.get(id);
+  if (!data || !r) return;
+  d.querySelector('.rt-body').innerHTML = routesHTML(data, r.item);
+  d.querySelector('summary .c').textContent = `${data.total} on OpenBeta`;
+}
+function loadRoutes(d){
+  const id = d.dataset.id, r = state.byId && state.byId.get(id);
+  if (!r) return;
+  if (state.rtData.has(id)) return paintRoutes(d);
+  const body = d.querySelector('.rt-body');
+  body.innerHTML = '<p class="rt-load"><span class="spin"></span>Loading routes from OpenBeta…</p>';
+  memo(`rt|${id}`, 60*MIN, () => getCragRoutes(r.item)).then(data => {
+    state.rtData.set(id, data);
+    document.querySelectorAll('#out details.routes[open]').forEach(x => { if (x.dataset.id === id) paintRoutes(x); });
+  }, e => {
+    document.querySelectorAll('#out details.routes[open]').forEach(x => {
+      if (x.dataset.id === id) x.querySelector('.rt-body').innerHTML = `<p class="rt-load">Couldn't load routes (${esc(e.message || 'error')}). <button type="button" data-rt="retry">Try again</button></p>`;
+    });
+  });
+}
 function card(r){
   const it = r.item;
   const lis = r.flags.map(x => `<li class="${x.level === -1 ? 'lp' : 'l' + x.level}">${esc(x.text)}</li>`).join('');
@@ -1838,6 +2031,7 @@ function card(r){
     ${lis ? `<ul class="flags">${lis}</ul>` : ''}
     ${it.note ? `<p class="note">${esc(it.note)}</p>` : ''}
     ${links(r)}
+    ${it.type === 'climb' ? routesSection(r) : ''}
     ${hourlyTable(r)}
   </article>`;
 }
@@ -1941,14 +2135,45 @@ function render(view){
   $('#out').innerHTML = `<div class="band">${tallyBlock(byAct, ctx)}${homeBlock(ctx)}${zonesBlock(results, ctx)}</div>${sections}`;
   document.querySelectorAll('#out details.ruled').forEach(d => { if (openLists.includes(d.dataset.act)) d.open = true; });
   document.querySelectorAll('#out details.ro').forEach(d => { if (openCards.includes(d.dataset.id)) d.open = true; });
+  document.querySelectorAll('#out details.routes').forEach(d => { if (state.rtOpen.has(d.dataset.id)) d.open = true; });
 }
 function fillRuledCard(d){
   const slot = d.querySelector('.ro-card');
   const r = state.byId && state.byId.get(d.dataset.id);
-  if (slot && r && !slot.childElementCount) slot.innerHTML = card(r);
+  if (slot && r && !slot.childElementCount){
+    slot.innerHTML = card(r);
+    slot.querySelectorAll('details.routes').forEach(x => { if (state.rtOpen.has(x.dataset.id)) x.open = true; });
+  }
 }
 // 'toggle' doesn't bubble, so listen in the capture phase.
-$('#out').addEventListener('toggle', e => { if (e.target.matches && e.target.matches('details.ro') && e.target.open) fillRuledCard(e.target); }, true);
+$('#out').addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d.matches) return;
+  if (d.matches('details.ro') && d.open) fillRuledCard(d);
+  if (d.matches('details.routes')){
+    if (d.open){ state.rtOpen.add(d.dataset.id); loadRoutes(d); } else state.rtOpen.delete(d.dataset.id);
+  }
+}, true);
+// Route filters are shared by every crag and remembered in this browser.
+function rtChanged(){
+  try { localStorage.setItem('ww.rtf', JSON.stringify(state.rtf)); } catch {}
+  document.querySelectorAll('#out details.routes[open]').forEach(paintRoutes);
+}
+$('#out').addEventListener('click', e => {
+  const b = e.target.closest('button[data-rt]');
+  if (!b) return;
+  const d = b.closest('details.routes'), f = state.rtf, v = b.dataset.v;
+  if (b.dataset.rt === 'type' || b.dataset.rt === 'band'){
+    const arr = b.dataset.rt === 'type' ? f.types : f.bands, i = arr.indexOf(v);
+    i >= 0 ? arr.splice(i, 1) : arr.push(v);
+    rtChanged();
+  } else if (b.dataset.rt === 'clear'){ f.types = []; f.bands = []; rtChanged(); }
+  else if (b.dataset.rt === 'more' && d){ state.rtAll.add(d.dataset.id); paintRoutes(d); }
+  else if (b.dataset.rt === 'retry' && d) loadRoutes(d);
+});
+$('#out').addEventListener('change', e => {
+  if (e.target.matches('select[data-rt="sort"]')){ state.rtf.sort = e.target.value; rtChanged(); }
+});
 
 /* ---------- masthead block: white topo contours on cobalt, index contour every 5th line ---------- */
 function drawTopo(){
